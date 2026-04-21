@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:dotted_border/dotted_border.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -16,6 +15,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   static final NumberFormat _coinFormat = NumberFormat.decimalPattern('en_US');
 
+  static const _displayName = 'Player123';
   static const _coins = 1500;
   static const _rankingPoints = 875;
 
@@ -26,20 +26,44 @@ class _HomeScreenState extends State<HomeScreen> {
   static const _muted = Color(0xFF9E9E9E);
   static const _onNeonButton = Color(0xFF0A2E0A);
 
+  String get _nameInitial =>
+      _displayName.isNotEmpty ? _displayName[0].toUpperCase() : '?';
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _bg,
+      appBar: AppBar(
+        backgroundColor: _bg,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        centerTitle: true,
+        title: const Text(
+          'CRICKET SIM MASTER',
+          style: TextStyle(
+            fontWeight: FontWeight.w800,
+            fontSize: 14,
+            letterSpacing: 0.5,
+            color: Colors.white,
+          ),
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.person_outline, color: _neon),
+            tooltip: 'Profile',
+            onPressed: () => setState(() => _navIndex = 3),
+          ),
+        ],
+      ),
       body: SafeArea(
+        top: false,
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _buildHeader(),
-              const SizedBox(height: 20),
-              _buildBanner(),
-              const SizedBox(height: 20),
+              _buildProfileSection(),
+              const SizedBox(height: 24),
               _buildPlayMatchButton(),
               const SizedBox(height: 16),
               _buildMenuCard(
@@ -64,8 +88,6 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(height: 12),
               _buildDailyRewardCard(),
-              const SizedBox(height: 20),
-              _buildStatsRow(),
             ],
           ),
         ),
@@ -74,173 +96,76 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildHeader() {
+  /// Wireframe: large initial avatar, name + coins + ranking stacked on the right.
+  Widget _buildProfileSection() {
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Container(
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             border: Border.all(color: _neon, width: 2),
           ),
-          child: ClipOval(
-            child: CachedNetworkImage(
-              imageUrl:
-                  'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=128&h=128&fit=crop',
-              width: 56,
-              height: 56,
-              fit: BoxFit.cover,
-              placeholder: (_, __) => Container(
-                width: 56,
-                height: 56,
-                color: _card,
-                alignment: Alignment.center,
-                child: const SizedBox(
-                  width: 22,
-                  height: 22,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: _neon),
-                ),
-              ),
-              errorWidget: (_, __, ___) => Container(
-                width: 56,
-                height: 56,
-                color: _card,
-                alignment: Alignment.center,
-                child: Icon(Icons.person, color: _muted.withValues(alpha: 0.7)),
+          child: CircleAvatar(
+            radius: 36,
+            backgroundColor: _card,
+            child: Text(
+              _nameInitial,
+              style: const TextStyle(
+                color: _neon,
+                fontSize: 28,
+                fontWeight: FontWeight.w800,
               ),
             ),
           ),
         ),
-        const SizedBox(width: 14),
+        const SizedBox(width: 16),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Player123',
+                _displayName,
                 style: TextStyle(
                   color: _neon,
-                  fontSize: 18,
+                  fontSize: 20,
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              const SizedBox(height: 2),
-              Text(
-                'PRO LEAGUE',
-                style: TextStyle(
-                  color: _muted.withValues(alpha: 0.9),
-                  fontSize: 12,
-                  letterSpacing: 0.5,
-                ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Icon(Icons.monetization_on, color: Colors.amber.shade600, size: 18),
+                  const SizedBox(width: 8),
+                  Text(
+                    'COINS: ${_coinFormat.format(_coins)}',
+                    style: TextStyle(
+                      color: _muted.withValues(alpha: 0.95),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Icon(Icons.star_border_rounded, color: _neon.withValues(alpha: 0.9), size: 18),
+                  const SizedBox(width: 8),
+                  Text(
+                    'RANKING POINTS: ${_coinFormat.format(_rankingPoints)}',
+                    style: TextStyle(
+                      color: _muted.withValues(alpha: 0.95),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
         ),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.monetization_on, color: Colors.amber.shade600, size: 22),
-                const SizedBox(width: 6),
-                Text(
-                  _coinFormat.format(_coins),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '${_coinFormat.format(_rankingPoints)} RANKING POINTS',
-              style: const TextStyle(
-                color: _neon,
-                fontSize: 10,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0.6,
-              ),
-            ),
-          ],
-        ),
       ],
-    );
-  }
-
-  Widget _buildBanner() {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: Stack(
-        children: [
-          AspectRatio(
-            aspectRatio: 16 / 9,
-            child: CachedNetworkImage(
-              imageUrl:
-                  'https://images.unsplash.com/photo-1589487391730-58f20eb2c308?w=800&q=80',
-              fit: BoxFit.cover,
-              placeholder: (_, __) => Container(color: _card),
-              errorWidget: (_, __, ___) => Container(
-                color: const Color(0xFF1a3a52),
-                alignment: Alignment.center,
-                child: Icon(Icons.sports_cricket, color: _muted.withValues(alpha: 0.5), size: 48),
-              ),
-            ),
-          ),
-          Positioned.fill(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.black.withValues(alpha: 0.25),
-                    Colors.black.withValues(alpha: 0.65),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            left: 20,
-            bottom: 18,
-            right: 20,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'WICKET WARS',
-                  style: TextStyle(
-                    color: _neon,
-                    fontSize: 26,
-                    fontWeight: FontWeight.w900,
-                    fontStyle: FontStyle.italic,
-                    letterSpacing: 1,
-                    shadows: [
-                      Shadow(
-                        color: _neon.withValues(alpha: 0.45),
-                        blurRadius: 16,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'SEASON 4 ACTIVE',
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.9),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 1.2,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -430,28 +355,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildStatsRow() {
-    return Row(
-      children: [
-        Expanded(
-          child: _StatCard(
-            label: 'WIN RATE',
-            value: '68%',
-            valueColor: _neon,
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _StatCard(
-            label: 'AVG SCORE',
-            value: '242',
-            valueColor: Colors.white,
-          ),
-        ),
-      ],
-    );
-  }
-
   Widget _buildBottomNav() {
     return Container(
       padding: const EdgeInsets.only(top: 8, bottom: 4),
@@ -490,53 +393,6 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _StatCard extends StatelessWidget {
-  const _StatCard({
-    required this.label,
-    required this.value,
-    required this.valueColor,
-  });
-
-  final String label;
-  final String value;
-  final Color valueColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
-      decoration: BoxDecoration(
-        color: _HomeScreenState._card,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: _HomeScreenState._cardBorder),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              color: _HomeScreenState._muted.withValues(alpha: 0.9),
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.6,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            value,
-            style: TextStyle(
-              color: valueColor,
-              fontSize: 28,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ],
       ),
     );
   }

@@ -13,7 +13,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('WICKET WARS'), findsOneWidget);
+    expect(find.textContaining('CRICKET SIM MASTER'), findsOneWidget);
     expect(find.text('Player123'), findsOneWidget);
   });
 }

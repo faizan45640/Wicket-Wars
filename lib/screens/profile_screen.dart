@@ -7,6 +7,10 @@ class ProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Defining the neon color here for easy access,
+    // you can also move this to your GameColors class.
+    const Color neonGreen = Color(0xFF00FF00);
+
     return Scaffold(
       backgroundColor: GameColors.bg,
       appBar: AppBar(
@@ -29,21 +33,36 @@ class ProfileScreen extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
           child: Column(
             children: [
-              // Profile Image
+              // --- UPDATED NEON PROFILE IMAGE ---
               Container(
                 width: 100,
                 height: 100,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: GameColors.card,
-                  border: Border.all(color: GameColors.cardBorder, width: 2),
+                  color: GameColors.bg,
+                  border: Border.all(color: neonGreen, width: 2.5),
+                  boxShadow: [
+                    BoxShadow(
+                      color: neonGreen.withOpacity(0.5),
+                      blurRadius: 15,
+                      spreadRadius: 2,
+                    ),
+                  ],
                 ),
-                child: const Icon(
-                  Icons.person_outline,
-                  size: 60,
-                  color: GameColors.muted,
+                child: const Center(
+                  child: Text(
+                    'P',
+                    style: TextStyle(
+                      color: neonGreen,
+                      fontSize: 44,
+                      fontWeight: FontWeight.w500,
+                      shadows: [Shadow(color: neonGreen, blurRadius: 10)],
+                    ),
+                  ),
                 ),
               ),
+
+              // ----------------------------------
               const SizedBox(height: 16),
               // Player Name
               const Text(

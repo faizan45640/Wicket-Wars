@@ -2,7 +2,7 @@ import 'package:dotted_border/dotted_border.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-
+import 'package:go_router/go_router.dart';
 import '../theme/game_colors.dart';
 import '../widgets/game_bottom_nav.dart';
 
@@ -51,7 +51,7 @@ class HomeScreen extends StatelessWidget {
             children: [
               _buildProfileSection(),
               const SizedBox(height: 24),
-              _buildPlayMatchButton(),
+              _buildPlayMatchButton(context),
               const SizedBox(height: 16),
               _buildMenuCard(
                 icon: Icons.groups_outlined,
@@ -87,7 +87,8 @@ class HomeScreen extends StatelessWidget {
   }
 
   Widget _buildProfileSection() {
-    final initial = _displayName.isNotEmpty ? _displayName[0].toUpperCase() : '?';
+    final initial =
+        _displayName.isNotEmpty ? _displayName[0].toUpperCase() : '?';
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
@@ -125,7 +126,11 @@ class HomeScreen extends StatelessWidget {
               const SizedBox(height: 10),
               Row(
                 children: [
-                  Icon(Icons.monetization_on, color: Colors.amber.shade600, size: 18),
+                  Icon(
+                    Icons.monetization_on,
+                    color: Colors.amber.shade600,
+                    size: 18,
+                  ),
                   const SizedBox(width: 8),
                   Text(
                     'COINS: ${_coinFormat.format(_coins)}',
@@ -140,7 +145,11 @@ class HomeScreen extends StatelessWidget {
               const SizedBox(height: 6),
               Row(
                 children: [
-                  Icon(Icons.star_border_rounded, color: GameColors.neon.withValues(alpha: 0.9), size: 18),
+                  Icon(
+                    Icons.star_border_rounded,
+                    color: GameColors.neon.withValues(alpha: 0.9),
+                    size: 18,
+                  ),
                   const SizedBox(width: 8),
                   Text(
                     'RANKING POINTS: ${_coinFormat.format(_rankingPoints)}',
@@ -159,13 +168,14 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildPlayMatchButton() {
+  Widget _buildPlayMatchButton(BuildContext context) {
     return Material(
       color: GameColors.neon,
       borderRadius: BorderRadius.circular(18),
       elevation: 0,
       child: InkWell(
-        onTap: () {},
+        onTap: () => context.go('/online-match'),
+        // ------------------------,
         borderRadius: BorderRadius.circular(18),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
@@ -203,7 +213,11 @@ class HomeScreen extends StatelessWidget {
                   color: GameColors.onNeonButton,
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(Icons.sports_cricket, color: GameColors.neon, size: 28),
+                child: const Icon(
+                  Icons.sports_cricket,
+                  color: GameColors.neon,
+                  size: 28,
+                ),
               ),
             ],
           ),
@@ -262,7 +276,10 @@ class HomeScreen extends StatelessWidget {
               ),
               if (newBadge)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0xFFE65100),
                     borderRadius: BorderRadius.circular(6),
@@ -277,7 +294,10 @@ class HomeScreen extends StatelessWidget {
                   ),
                 )
               else if (showChevron)
-                Icon(Icons.chevron_right, color: GameColors.muted.withValues(alpha: 0.7)),
+                Icon(
+                  Icons.chevron_right,
+                  color: GameColors.muted.withValues(alpha: 0.7),
+                ),
             ],
           ),
         ),
@@ -302,7 +322,11 @@ class HomeScreen extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
               child: Row(
                 children: [
-                  const Icon(Icons.card_giftcard, color: GameColors.neon, size: 28),
+                  const Icon(
+                    Icons.card_giftcard,
+                    color: GameColors.neon,
+                    size: 28,
+                  ),
                   const SizedBox(width: 16),
                   Expanded(
                     child: Column(

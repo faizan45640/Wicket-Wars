@@ -5,6 +5,7 @@ import 'screens/leaderboard_screen.dart';
 import 'screens/placeholder_tab_screen.dart';
 import 'screens/squad_screen.dart';
 import 'screens/profile_screen.dart';
+import 'screens/online_match_screen.dart';
 
 /// Central routing - home, leaderboard, and tab placeholders.
 final GoRouter appRouter = GoRouter(
@@ -38,6 +39,13 @@ final GoRouter appRouter = GoRouter(
       path: '/profile',
       builder: (BuildContext context, GoRouterState state) {
         return const ProfileScreen();
+      },
+    ),
+    // ... existing routes
+    GoRoute(
+      path: '/online-match',
+      builder: (BuildContext context, GoRouterState state) {
+        return const OnlineMatchScreen();
       },
     ),
   ],

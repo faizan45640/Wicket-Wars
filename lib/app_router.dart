@@ -7,6 +7,7 @@ import 'screens/home_screen.dart';
 import 'screens/leaderboard_screen.dart';
 import 'screens/live_match_screen.dart';
 import 'screens/login_screen.dart';
+import 'screens/match_result_screen.dart';
 import 'screens/online_match_screen.dart';
 import 'screens/player_detail_screen.dart';
 import 'screens/placeholder_tab_screen.dart';
@@ -106,6 +107,12 @@ final GoRouter appRouter = GoRouter(
       path: '/match/live',
       builder: (BuildContext context, GoRouterState state) {
         return const LiveMatchScreen();
+      },
+    ),
+    GoRoute(
+      path: '/match/result',
+      builder: (BuildContext context, GoRouterState state) {
+        return const MatchResultScreen();
       },
     ),
   ],

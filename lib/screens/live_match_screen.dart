@@ -189,6 +189,22 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
                 _fowList(),
                 const SizedBox(height: 20),
                 _simulateButton(),
+                const SizedBox(height: 10),
+                OutlinedButton(
+                  onPressed: () => context.push('/match/result'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFFE0E0E0),
+                    side: BorderSide(color: GameColors.muted.withValues(alpha: 0.4)),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  child: const Text(
+                    'VIEW MATCH RESULT (demo)',
+                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+                  ),
+                ),
                 const SizedBox(height: 12),
                 Text(
                   'Scroll to review full card — static rows + live feed above update when you tap simulate.',

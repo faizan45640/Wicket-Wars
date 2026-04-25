@@ -1,17 +1,14 @@
 import 'package:dotted_border/dotted_border.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../theme/game_colors.dart';
+import '../widgets/game_bottom_nav.dart';
+
 /// Dark cricket dashboard — matches Wicket Wars home mockup.
-class HomeScreen extends StatefulWidget {
+class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
-
-  @override
-  State<HomeScreen> createState() => _HomeScreenState();
-}
-
-class _HomeScreenState extends State<HomeScreen> {
-  int _navIndex = 0;
 
   static final NumberFormat _coinFormat = NumberFormat.decimalPattern('en_US');
 
@@ -19,22 +16,12 @@ class _HomeScreenState extends State<HomeScreen> {
   static const _coins = 1500;
   static const _rankingPoints = 875;
 
-  static const _bg = Color(0xFF121212);
-  static const _card = Color(0xFF1E1E1E);
-  static const _cardBorder = Color(0xFF2A2A2A);
-  static const _neon = Color(0xFF39FF14);
-  static const _muted = Color(0xFF9E9E9E);
-  static const _onNeonButton = Color(0xFF0A2E0A);
-
-  String get _nameInitial =>
-      _displayName.isNotEmpty ? _displayName[0].toUpperCase() : '?';
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: GameColors.bg,
       appBar: AppBar(
-        backgroundColor: _bg,
+        backgroundColor: GameColors.bg,
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: true,
@@ -49,9 +36,9 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.person_outline, color: _neon),
+            icon: const Icon(Icons.person_outline, color: GameColors.neon),
             tooltip: 'Profile',
-            onPressed: () => setState(() => _navIndex = 3),
+            onPressed: () => context.go('/profile'),
           ),
         ],
       ),
@@ -71,6 +58,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 title: 'MY SQUAD',
                 subtitle: '11 Active Players',
                 showChevron: true,
+                onTap: () => context.go('/squad'),
               ),
               const SizedBox(height: 12),
               _buildMenuCard(
@@ -78,6 +66,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 title: 'TRAINING',
                 subtitle: 'Improve Skills',
                 newBadge: true,
+                onTap: () {},
               ),
               const SizedBox(height: 12),
               _buildMenuCard(
@@ -85,6 +74,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 title: 'LEADERBOARD',
                 subtitle: 'Rank #4,210',
                 showChevron: true,
+                onTap: () => context.go('/leaderboard'),
               ),
               const SizedBox(height: 12),
               _buildDailyRewardCard(),
@@ -92,27 +82,27 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ),
-      bottomNavigationBar: _buildBottomNav(),
+      bottomNavigationBar: const GameBottomNav(selectedIndex: 0),
     );
   }
 
-  /// Wireframe: large initial avatar, name + coins + ranking stacked on the right.
   Widget _buildProfileSection() {
+    final initial = _displayName.isNotEmpty ? _displayName[0].toUpperCase() : '?';
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Container(
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            border: Border.all(color: _neon, width: 2),
+            border: Border.all(color: GameColors.neon, width: 2),
           ),
           child: CircleAvatar(
             radius: 36,
-            backgroundColor: _card,
+            backgroundColor: GameColors.card,
             child: Text(
-              _nameInitial,
+              initial,
               style: const TextStyle(
-                color: _neon,
+                color: GameColors.neon,
                 fontSize: 28,
                 fontWeight: FontWeight.w800,
               ),
@@ -127,7 +117,7 @@ class _HomeScreenState extends State<HomeScreen> {
               const Text(
                 _displayName,
                 style: TextStyle(
-                  color: _neon,
+                  color: GameColors.neon,
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
                 ),
@@ -140,7 +130,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   Text(
                     'COINS: ${_coinFormat.format(_coins)}',
                     style: TextStyle(
-                      color: _muted.withValues(alpha: 0.95),
+                      color: GameColors.muted.withValues(alpha: 0.95),
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
                     ),
@@ -150,12 +140,12 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 6),
               Row(
                 children: [
-                  Icon(Icons.star_border_rounded, color: _neon.withValues(alpha: 0.9), size: 18),
+                  Icon(Icons.star_border_rounded, color: GameColors.neon.withValues(alpha: 0.9), size: 18),
                   const SizedBox(width: 8),
                   Text(
                     'RANKING POINTS: ${_coinFormat.format(_rankingPoints)}',
                     style: TextStyle(
-                      color: _muted.withValues(alpha: 0.95),
+                      color: GameColors.muted.withValues(alpha: 0.95),
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
                     ),
@@ -171,7 +161,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildPlayMatchButton() {
     return Material(
-      color: _neon,
+      color: GameColors.neon,
       borderRadius: BorderRadius.circular(18),
       elevation: 0,
       child: InkWell(
@@ -188,7 +178,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     Text(
                       'START COMPETITION',
                       style: TextStyle(
-                        color: _onNeonButton.withValues(alpha: 0.85),
+                        color: GameColors.onNeonButton.withValues(alpha: 0.85),
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 0.8,
@@ -198,7 +188,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     const Text(
                       'PLAY MATCH',
                       style: TextStyle(
-                        color: _onNeonButton,
+                        color: GameColors.onNeonButton,
                         fontSize: 22,
                         fontWeight: FontWeight.w900,
                         letterSpacing: 0.5,
@@ -210,10 +200,10 @@ class _HomeScreenState extends State<HomeScreen> {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: _onNeonButton,
+                  color: GameColors.onNeonButton,
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(Icons.sports_cricket, color: _neon, size: 28),
+                child: const Icon(Icons.sports_cricket, color: GameColors.neon, size: 28),
               ),
             ],
           ),
@@ -228,22 +218,23 @@ class _HomeScreenState extends State<HomeScreen> {
     required String subtitle,
     bool showChevron = false,
     bool newBadge = false,
+    VoidCallback? onTap,
   }) {
     return Material(
-      color: _card,
+      color: GameColors.card,
       borderRadius: BorderRadius.circular(18),
       child: InkWell(
-        onTap: () {},
+        onTap: onTap,
         borderRadius: BorderRadius.circular(18),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: _cardBorder),
+            border: Border.all(color: GameColors.cardBorder),
           ),
           child: Row(
             children: [
-              Icon(icon, color: _muted, size: 28),
+              Icon(icon, color: GameColors.muted, size: 28),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(
@@ -262,7 +253,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     Text(
                       subtitle,
                       style: TextStyle(
-                        color: _muted.withValues(alpha: 0.95),
+                        color: GameColors.muted.withValues(alpha: 0.95),
                         fontSize: 13,
                       ),
                     ),
@@ -286,7 +277,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 )
               else if (showChevron)
-                Icon(Icons.chevron_right, color: _muted.withValues(alpha: 0.7)),
+                Icon(Icons.chevron_right, color: GameColors.muted.withValues(alpha: 0.7)),
             ],
           ),
         ),
@@ -296,7 +287,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildDailyRewardCard() {
     return DottedBorder(
-      color: _neon,
+      color: GameColors.neon,
       strokeWidth: 1.8,
       dashPattern: const [6, 4],
       borderType: BorderType.RRect,
@@ -304,14 +295,14 @@ class _HomeScreenState extends State<HomeScreen> {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(18),
         child: Material(
-          color: _card,
+          color: GameColors.card,
           child: InkWell(
             onTap: () {},
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
               child: Row(
                 children: [
-                  Icon(Icons.card_giftcard, color: _neon, size: 28),
+                  const Icon(Icons.card_giftcard, color: GameColors.neon, size: 28),
                   const SizedBox(width: 16),
                   Expanded(
                     child: Column(
@@ -330,7 +321,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         Text(
                           'Available Now',
                           style: TextStyle(
-                            color: _neon,
+                            color: GameColors.neon,
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
                           ),
@@ -342,7 +333,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     width: 10,
                     height: 10,
                     decoration: const BoxDecoration(
-                      color: _neon,
+                      color: GameColors.neon,
                       shape: BoxShape.circle,
                     ),
                   ),
@@ -350,118 +341,6 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBottomNav() {
-    return Container(
-      padding: const EdgeInsets.only(top: 8, bottom: 4),
-      decoration: const BoxDecoration(
-        color: Color(0xFF1A1A1A),
-        border: Border(top: BorderSide(color: _cardBorder)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _NavItem(
-              icon: Icons.home_rounded,
-              label: 'HOME',
-              selected: _navIndex == 0,
-              onTap: () => setState(() => _navIndex = 0),
-            ),
-            _NavItem(
-              icon: Icons.groups_outlined,
-              label: 'SQUAD',
-              selected: _navIndex == 1,
-              onTap: () => setState(() => _navIndex = 1),
-            ),
-            _NavItem(
-              icon: Icons.sports_cricket,
-              label: 'MATCHES',
-              selected: _navIndex == 2,
-              onTap: () => setState(() => _navIndex = 2),
-            ),
-            _NavItem(
-              icon: Icons.person_outline,
-              label: 'PROFILE',
-              selected: _navIndex == 3,
-              onTap: () => setState(() => _navIndex = 3),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _NavItem extends StatelessWidget {
-  const _NavItem({
-    required this.icon,
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  static const _neon = _HomeScreenState._neon;
-  static const _muted = _HomeScreenState._muted;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = selected ? _neon : _muted.withValues(alpha: 0.55);
-
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              color: color,
-              size: 26,
-              shadows: selected
-                  ? [
-                      Shadow(
-                        color: _neon.withValues(alpha: 0.75),
-                        blurRadius: 14,
-                      ),
-                    ]
-                  : null,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: TextStyle(
-                color: color,
-                fontSize: 10,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0.4,
-              ),
-            ),
-            const SizedBox(height: 4),
-            if (selected)
-              Container(
-                width: 5,
-                height: 5,
-                decoration: const BoxDecoration(
-                  color: _neon,
-                  shape: BoxShape.circle,
-                ),
-              )
-            else
-              const SizedBox(height: 5),
-          ],
         ),
       ),
     );

@@ -49,6 +49,7 @@ final class InMemoryStore {
           displayName: 'Squad Player ${i + 1}',
           isRealPlayer: i.isEven,
           avatarUrl: null,
+          cardImageAsset: null,
           attributes: PlayerAttributes(
             batting: 55 + i * 3,
             bowling: 50 + (i % 5) * 4,

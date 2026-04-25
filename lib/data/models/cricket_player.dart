@@ -9,6 +9,8 @@ class CricketPlayer {
     required this.isRealPlayer,
     required this.attributes,
     this.avatarUrl,
+    /// Local PNG in `assets/` for card art (FIFA-style; transparent background recommended).
+    this.cardImageAsset,
     this.training,
   });
 
@@ -16,6 +18,7 @@ class CricketPlayer {
   final String displayName;
   final bool isRealPlayer;
   final String? avatarUrl;
+  final String? cardImageAsset;
   final PlayerAttributes attributes;
 
   /// Null when not in training.
@@ -29,6 +32,7 @@ class CricketPlayer {
         'displayName': displayName,
         'isRealPlayer': isRealPlayer,
         'avatarUrl': avatarUrl,
+        'cardImageAsset': cardImageAsset,
         'attributes': attributes.toMap(),
         'training': training?.toMap(),
       };
@@ -39,6 +43,7 @@ class CricketPlayer {
       displayName: map['displayName'] as String? ?? 'Unknown',
       isRealPlayer: map['isRealPlayer'] as bool? ?? false,
       avatarUrl: map['avatarUrl'] as String?,
+      cardImageAsset: map['cardImageAsset'] as String?,
       attributes: PlayerAttributes.fromMap(
         Map<String, dynamic>.from(map['attributes'] as Map? ?? {}),
       ),
@@ -53,6 +58,7 @@ class CricketPlayer {
     String? displayName,
     bool? isRealPlayer,
     String? avatarUrl,
+    String? cardImageAsset,
     PlayerAttributes? attributes,
     TrainingState? training,
     bool clearTraining = false,
@@ -62,6 +68,7 @@ class CricketPlayer {
       displayName: displayName ?? this.displayName,
       isRealPlayer: isRealPlayer ?? this.isRealPlayer,
       avatarUrl: avatarUrl ?? this.avatarUrl,
+      cardImageAsset: cardImageAsset ?? this.cardImageAsset,
       attributes: attributes ?? this.attributes,
       training: clearTraining ? null : (training ?? this.training),
     );

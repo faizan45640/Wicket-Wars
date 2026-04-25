@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../theme/game_colors.dart';
 import '../widgets/game_bottom_nav.dart';
+import 'package:go_router/go_router.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -18,6 +19,10 @@ class ProfileScreen extends StatelessWidget {
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: true,
+        leading: IconButton(
+          icon: const Icon(Icons.chevron_left, color: neonGreen, size: 32),
+          onPressed: () => context.go('/'),
+        ),
         title: const Text(
           'PROFILE',
           style: TextStyle(

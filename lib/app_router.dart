@@ -1,12 +1,12 @@
 import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
-
 import 'screens/home_screen.dart';
 import 'screens/leaderboard_screen.dart';
 import 'screens/placeholder_tab_screen.dart';
 import 'screens/squad_screen.dart';
+import 'screens/profile_screen.dart';
 
-/// Central routing — home, leaderboard, and tab placeholders.
+/// Central routing - home, leaderboard, and tab placeholders.
 final GoRouter appRouter = GoRouter(
   initialLocation: '/',
   routes: <RouteBase>[
@@ -31,19 +31,13 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/matches',
       builder: (BuildContext context, GoRouterState state) {
-        return const PlaceholderTabScreen(
-          title: 'MATCHES',
-          navIndex: 2,
-        );
+        return const PlaceholderTabScreen(title: 'MATCHES', navIndex: 2);
       },
     ),
     GoRoute(
       path: '/profile',
       builder: (BuildContext context, GoRouterState state) {
-        return const PlaceholderTabScreen(
-          title: 'PROFILE',
-          navIndex: 3,
-        );
+        return const ProfileScreen();
       },
     ),
   ],

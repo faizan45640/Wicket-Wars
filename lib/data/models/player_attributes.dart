@@ -40,4 +40,22 @@ class PlayerAttributes {
       consistency: (map['consistency'] as num?)?.round() ?? 0,
     );
   }
+
+  static int _clamp100(int v) => v < 0 ? 0 : (v > 100 ? 100 : v);
+
+  PlayerAttributes copyWith({
+    int? batting,
+    int? bowling,
+    int? fielding,
+    int? stamina,
+    int? consistency,
+  }) {
+    return PlayerAttributes(
+      batting: _clamp100(batting ?? this.batting),
+      bowling: _clamp100(bowling ?? this.bowling),
+      fielding: _clamp100(fielding ?? this.fielding),
+      stamina: _clamp100(stamina ?? this.stamina),
+      consistency: _clamp100(consistency ?? this.consistency),
+    );
+  }
 }

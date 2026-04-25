@@ -83,7 +83,7 @@ class OnlineMatchScreen extends StatelessWidget {
                 borderRadius: BorderRadius.circular(18),
                 elevation: 0,
                 child: InkWell(
-                  onTap: () {},
+                  onTap: () => context.push('/match/live'),
                   borderRadius: BorderRadius.circular(18),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 20),
@@ -102,20 +102,27 @@ class OnlineMatchScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Text(
-                    'To Match Screen',
-                    style: TextStyle(
-                      color: GameColors.muted,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
+              InkWell(
+                onTap: () => context.push('/match/live'),
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      Text(
+                        'To live match (demo)',
+                        style: TextStyle(
+                          color: GameColors.muted,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Icon(Icons.arrow_forward, color: GameColors.neon, size: 18),
+                    ],
                   ),
-                  const SizedBox(width: 4),
-                  Icon(Icons.arrow_forward, color: GameColors.muted, size: 18),
-                ],
+                ),
               ),
             ],
           ),

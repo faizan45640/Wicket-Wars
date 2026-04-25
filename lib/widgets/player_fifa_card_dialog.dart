@@ -37,6 +37,7 @@ class _FifaCardDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final maxDialogHeight = MediaQuery.sizeOf(context).height * 0.88;
     final a = player.attributes;
     final ovr = a.overall;
     final pos = _positionLabel(a);
@@ -62,152 +63,165 @@ class _FifaCardDialog extends StatelessWidget {
           return Transform.scale(scale: scale, child: child);
         },
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 360),
+          constraints: BoxConstraints(
+            maxWidth: 360,
+            maxHeight: maxDialogHeight,
+          ),
           child: Material(
             color: Colors.transparent,
             child: Stack(
               clipBehavior: Clip.none,
               children: [
-                Container(
-                  padding: const EdgeInsets.all(2.5),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(20),
-                    gradient: LinearGradient(
-                      colors: [
-                        GameColors.neon.withValues(alpha: 0.55),
-                        GameColors.cardBorder,
-                      ],
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: GameColors.neon.withValues(alpha: 0.12),
-                        blurRadius: 20,
-                        spreadRadius: 0,
-                      ),
-                    ],
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(18),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            PlayerCardImage(
-                              imagePath: player.cardImageAsset,
-                              isReal: player.isRealPlayer,
-                              playerName: player.displayName,
-                              topCornersOnly: true,
-                            ),
-                            Positioned(
-                              left: 10,
-                              top: 10,
-                              child: _GlassStatPill(
-                                child: Text(
-                                  '$ovr',
-                                  style: const TextStyle(
-                                    color: _textPrimary,
-                                    fontSize: 32,
-                                    fontWeight: FontWeight.w900,
-                                    height: 1,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            Positioned(
-                              right: 8,
-                              top: 10,
-                              child: _GlassStatPill(
-                                child: Text(
-                                  pos,
-                                  style: const TextStyle(
-                                    color: accent,
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 13,
-                                    letterSpacing: 0.6,
-                                  ),
-                                ),
-                              ),
+                Column(
+                  children: [
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.all(2.5),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(20),
+                          gradient: LinearGradient(
+                            colors: [
+                              GameColors.neon.withValues(alpha: 0.55),
+                              GameColors.cardBorder,
+                            ],
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: GameColors.neon.withValues(alpha: 0.12),
+                              blurRadius: 20,
+                              spreadRadius: 0,
                             ),
                           ],
                         ),
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-                          decoration: const BoxDecoration(gradient: innerGradient),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                player.displayName,
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  color: _textPrimary,
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 0.2,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(18),
+                          child: SingleChildScrollView(
+                            padding: EdgeInsets.zero,
+                            physics: const BouncingScrollPhysics(),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Stack(
+                                  clipBehavior: Clip.none,
+                                  children: [
+                                    PlayerCardImage(
+                                      imagePath: player.cardImageAsset,
+                                      isReal: player.isRealPlayer,
+                                      playerName: player.displayName,
+                                      topCornersOnly: true,
+                                    ),
+                                    Positioned(
+                                      left: 10,
+                                      top: 10,
+                                      child: _GlassStatPill(
+                                        child: Text(
+                                          '$ovr',
+                                          style: const TextStyle(
+                                            color: _textPrimary,
+                                            fontSize: 32,
+                                            fontWeight: FontWeight.w900,
+                                            height: 1,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    Positioned(
+                                      right: 8,
+                                      top: 10,
+                                      child: _GlassStatPill(
+                                        child: Text(
+                                          pos,
+                                          style: const TextStyle(
+                                            color: accent,
+                                            fontWeight: FontWeight.w800,
+                                            fontSize: 13,
+                                            letterSpacing: 0.6,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                player.isRealPlayer ? 'VERIFIED' : 'CUSTOM',
-                                style: const TextStyle(
-                                  color: _textSecondary,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  letterSpacing: 0.8,
-                                ),
-                              ),
-                              const SizedBox(height: 20),
-                              const Align(
-                                alignment: Alignment.centerLeft,
-                                child: Text(
-                                  'ATTRIBUTES',
-                                  style: TextStyle(
-                                    color: _textMuted,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w800,
-                                    letterSpacing: 1.0,
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+                                  decoration: const BoxDecoration(gradient: innerGradient),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        player.displayName,
+                                        textAlign: TextAlign.center,
+                                        style: const TextStyle(
+                                          color: _textPrimary,
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.w800,
+                                          letterSpacing: 0.2,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        player.isRealPlayer ? 'VERIFIED' : 'CUSTOM',
+                                        style: const TextStyle(
+                                          color: _textSecondary,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          letterSpacing: 0.8,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 20),
+                                      const Align(
+                                        alignment: Alignment.centerLeft,
+                                        child: Text(
+                                          'ATTRIBUTES',
+                                          style: TextStyle(
+                                            color: _textMuted,
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w800,
+                                            letterSpacing: 1.0,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 10),
+                                      _StatRow(
+                                        label: 'BAT',
+                                        value: a.batting,
+                                        color: const Color(0xFF64B5F6),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      _StatRow(
+                                        label: 'BWL',
+                                        value: a.bowling,
+                                        color: const Color(0xFFFFB74D),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      _StatRow(
+                                        label: 'FLD',
+                                        value: a.fielding,
+                                        color: const Color(0xFF81C784),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      _StatRow(
+                                        label: 'STA',
+                                        value: a.stamina,
+                                        color: const Color(0xFFBA68C8),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      _StatRow(
+                                        label: 'CON',
+                                        value: a.consistency,
+                                        color: const Color(0xFF4DD0E1),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                              ),
-                              const SizedBox(height: 10),
-                              _StatRow(
-                                label: 'BAT',
-                                value: a.batting,
-                                color: const Color(0xFF64B5F6),
-                              ),
-                              const SizedBox(height: 8),
-                              _StatRow(
-                                label: 'BWL',
-                                value: a.bowling,
-                                color: const Color(0xFFFFB74D),
-                              ),
-                              const SizedBox(height: 8),
-                              _StatRow(
-                                label: 'FLD',
-                                value: a.fielding,
-                                color: const Color(0xFF81C784),
-                              ),
-                              const SizedBox(height: 8),
-                              _StatRow(
-                                label: 'STA',
-                                value: a.stamina,
-                                color: const Color(0xFFBA68C8),
-                              ),
-                              const SizedBox(height: 8),
-                              _StatRow(
-                                label: 'CON',
-                                value: a.consistency,
-                                color: const Color(0xFF4DD0E1),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
-                      ],
+                      ),
                     ),
-                  ),
+                  ],
                 ),
                 Positioned(
                   right: 2,

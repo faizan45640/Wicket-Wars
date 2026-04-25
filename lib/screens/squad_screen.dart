@@ -5,7 +5,6 @@ import '../data/models/cricket_player.dart';
 import '../data/models/player_attributes.dart';
 import '../theme/game_colors.dart';
 import '../widgets/game_bottom_nav.dart';
-import '../widgets/player_fifa_card_dialog.dart';
 
 const Color _squadNameColor = Color(0xFFEEEEEE);
 const Color _squadSubColor = Color(0xFFC8C8C8);
@@ -92,7 +91,7 @@ class _SquadScreenState extends State<SquadScreen> {
                 final p = _squad[index];
                 return _SquadPlayerTile(
                   player: p,
-                  onTap: () => showFifaStylePlayerCard(context, player: p),
+                  onTap: () => context.push('/player/${p.id}', extra: p),
                 );
               },
             ),

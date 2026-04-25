@@ -5,11 +5,27 @@ import '../theme/game_colors.dart';
 
 /// Same bottom bar as the home screen; [selectedIndex] 0=Home, 1=Squad, 2=Matches, 3=Profile.
 class GameBottomNav extends StatelessWidget {
-  const GameBottomNav({super.key, required this.selectedIndex});
+  const GameBottomNav({
+    super.key,
+    required this.selectedIndex,
+    this.lockNavigation = false,
+  });
 
   final int selectedIndex;
 
-  void _go(BuildContext context, int index) {
+  /// When true (e.g. live match), tab taps show a message instead of navigating.
+  final bool lockNavigation;
+
+  void _goOrLock(BuildContext context, int index) {
+    if (lockNavigation) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Finish the match or use the back button to leave.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
     switch (index) {
       case 0:
         context.go('/');
@@ -43,25 +59,25 @@ class GameBottomNav extends StatelessWidget {
               icon: Icons.home_rounded,
               label: 'HOME',
               selected: selectedIndex == 0,
-              onTap: () => _go(context, 0),
+              onTap: () => _goOrLock(context, 0),
             ),
             _Item(
               icon: Icons.groups_outlined,
               label: 'SQUAD',
               selected: selectedIndex == 1,
-              onTap: () => _go(context, 1),
+              onTap: () => _goOrLock(context, 1),
             ),
             _Item(
               icon: Icons.sports_cricket,
               label: 'MATCHES',
               selected: selectedIndex == 2,
-              onTap: () => _go(context, 2),
+              onTap: () => _goOrLock(context, 2),
             ),
             _Item(
               icon: Icons.person_outline,
               label: 'PROFILE',
               selected: selectedIndex == 3,
-              onTap: () => _go(context, 3),
+              onTap: () => _goOrLock(context, 3),
             ),
           ],
         ),

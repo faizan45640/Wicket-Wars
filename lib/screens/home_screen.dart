@@ -2,7 +2,6 @@ import 'package:dotted_border/dotted_border.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import 'package:go_router/go_router.dart';
 import '../theme/game_colors.dart';
 import '../widgets/game_bottom_nav.dart';
 
@@ -34,13 +33,6 @@ class HomeScreen extends StatelessWidget {
             color: Colors.white,
           ),
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.person_outline, color: GameColors.neon),
-            tooltip: 'Profile',
-            onPressed: () => context.go('/profile'),
-          ),
-        ],
       ),
       body: SafeArea(
         top: false,
@@ -49,7 +41,7 @@ class HomeScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _buildProfileSection(),
+              _buildProfileSection(context),
               const SizedBox(height: 24),
               _buildPlayMatchButton(context),
               const SizedBox(height: 16),
@@ -86,85 +78,98 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildProfileSection() {
+  Widget _buildProfileSection(BuildContext context) {
     final initial =
         _displayName.isNotEmpty ? _displayName[0].toUpperCase() : '?';
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Container(
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(color: GameColors.neon, width: 2),
-          ),
-          child: CircleAvatar(
-            radius: 36,
-            backgroundColor: GameColors.card,
-            child: Text(
-              initial,
-              style: const TextStyle(
-                color: GameColors.neon,
-                fontSize: 28,
-                fontWeight: FontWeight.w800,
-              ),
+    return Tooltip(
+      message: 'Profile',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => context.go('/profile'),
+          borderRadius: BorderRadius.circular(18),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: GameColors.neon, width: 2),
+                  ),
+                  child: CircleAvatar(
+                    radius: 36,
+                    backgroundColor: GameColors.card,
+                    child: Text(
+                      initial,
+                      style: const TextStyle(
+                        color: GameColors.neon,
+                        fontSize: 28,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        _displayName,
+                        style: TextStyle(
+                          color: GameColors.neon,
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.monetization_on,
+                            color: Colors.amber.shade600,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'COINS: ${_coinFormat.format(_coins)}',
+                            style: TextStyle(
+                              color: GameColors.muted.withValues(alpha: 0.95),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.star_border_rounded,
+                            color: GameColors.neon.withValues(alpha: 0.9),
+                            size: 18,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'RANKING POINTS: ${_coinFormat.format(_rankingPoints)}',
+                            style: TextStyle(
+                              color: GameColors.muted.withValues(alpha: 0.95),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
         ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                _displayName,
-                style: TextStyle(
-                  color: GameColors.neon,
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Icon(
-                    Icons.monetization_on,
-                    color: Colors.amber.shade600,
-                    size: 18,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'COINS: ${_coinFormat.format(_coins)}',
-                    style: TextStyle(
-                      color: GameColors.muted.withValues(alpha: 0.95),
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Row(
-                children: [
-                  Icon(
-                    Icons.star_border_rounded,
-                    color: GameColors.neon.withValues(alpha: 0.9),
-                    size: 18,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'RANKING POINTS: ${_coinFormat.format(_rankingPoints)}',
-                    style: TextStyle(
-                      color: GameColors.muted.withValues(alpha: 0.95),
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ],
+      ),
     );
   }
 

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+
+import '../auth/auth_controller.dart';
 import '../theme/game_colors.dart';
 import '../widgets/game_bottom_nav.dart';
-import 'package:go_router/go_router.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -48,7 +50,7 @@ class ProfileScreen extends StatelessWidget {
                   border: Border.all(color: neonGreen, width: 2.5),
                   boxShadow: [
                     BoxShadow(
-                      color: neonGreen.withOpacity(0.5),
+                      color: neonGreen.withValues(alpha: 0.5),
                       blurRadius: 15,
                       spreadRadius: 2,
                     ),
@@ -114,6 +116,21 @@ class ProfileScreen extends StatelessWidget {
                 icon: Icons.monetization_on_outlined,
                 title: 'Coins',
                 value: '430',
+              ),
+              const SizedBox(height: 32),
+              OutlinedButton(
+                onPressed: () {
+                  authController.signOut();
+                },
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFFE57373),
+                  side: const BorderSide(color: Color(0xFF4A2C2C)),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                ),
+                child: const Text(
+                  'Log out',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
               ),
             ],
           ),

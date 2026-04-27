@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../theme/game_colors.dart';
+import '../widgets/daily_reward_dialog.dart';
 import '../widgets/game_bottom_nav.dart';
+import '../widgets/training_player_picker.dart';
 
 /// Dark cricket dashboard — matches Wicket Wars home mockup.
 class HomeScreen extends StatelessWidget {
@@ -58,7 +60,7 @@ class HomeScreen extends StatelessWidget {
                 title: 'TRAINING',
                 subtitle: 'Improve Skills',
                 newBadge: true,
-                onTap: () {},
+                onTap: () => showTrainingPlayerPicker(context),
               ),
               const SizedBox(height: 12),
               _buildMenuCard(
@@ -69,7 +71,7 @@ class HomeScreen extends StatelessWidget {
                 onTap: () => context.go('/leaderboard'),
               ),
               const SizedBox(height: 12),
-              _buildDailyRewardCard(),
+              _buildDailyRewardCard(context),
             ],
           ),
         ),
@@ -179,7 +181,7 @@ class HomeScreen extends StatelessWidget {
       borderRadius: BorderRadius.circular(18),
       elevation: 0,
       child: InkWell(
-        onTap: () => context.go('/online-match'),
+        onTap: () => context.go('/matches'),
         // ------------------------,
         borderRadius: BorderRadius.circular(18),
         child: Padding(
@@ -310,7 +312,7 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildDailyRewardCard() {
+  Widget _buildDailyRewardCard(BuildContext context) {
     return DottedBorder(
       color: GameColors.neon,
       strokeWidth: 1.8,
@@ -322,7 +324,7 @@ class HomeScreen extends StatelessWidget {
         child: Material(
           color: GameColors.card,
           child: InkWell(
-            onTap: () {},
+            onTap: () => showDailyRewardDialog(context),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
               child: Row(

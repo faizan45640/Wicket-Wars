@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../data/models/cricket_player.dart';
-import '../data/models/player_attributes.dart';
+import '../data/placeholder/demo_squad.dart';
 import '../theme/game_colors.dart';
 import '../widgets/game_bottom_nav.dart';
 
@@ -23,33 +23,7 @@ class _SquadScreenState extends State<SquadScreen> {
   @override
   void initState() {
     super.initState();
-    _squad = _buildDummySquad();
-  }
-
-  List<CricketPlayer> _buildDummySquad() {
-    const letters = 'ABCDEFGHIJKL';
-    return List.generate(letters.length, (i) {
-      final l = letters[i];
-      int clamp100(int v) => v.clamp(0, 100);
-      var bat = clamp100(55 + i * 3);
-      var bwl = clamp100(48 + (i % 5) * 4);
-      var fld = clamp100(50 + i * 2);
-      var sta = clamp100(58 + (i % 3));
-      var con = clamp100(52 + i);
-      return CricketPlayer(
-        id: 'p_$i',
-        displayName: 'Player $l',
-        isRealPlayer: i.isEven,
-        cardImageAsset: null,
-        attributes: PlayerAttributes(
-          batting: bat,
-          bowling: bwl,
-          fielding: fld,
-          stamina: sta,
-          consistency: con,
-        ),
-      );
-    });
+    _squad = buildDemoSquad();
   }
 
   @override

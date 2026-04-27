@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+
 import '../theme/game_colors.dart';
+import '../widgets/game_bottom_nav.dart';
 
 class OnlineMatchScreen extends StatelessWidget {
   const OnlineMatchScreen({super.key});
@@ -128,6 +130,7 @@ class OnlineMatchScreen extends StatelessWidget {
           ),
         ),
       ),
+      bottomNavigationBar: const GameBottomNav(selectedIndex: 2),
     );
   }
 

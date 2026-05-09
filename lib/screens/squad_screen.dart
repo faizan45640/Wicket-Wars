@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../data/models/cricket_player.dart';
-import '../data/placeholder/demo_squad.dart';
+import '../data/providers.dart';
 import '../theme/game_colors.dart';
 import '../widgets/game_bottom_nav.dart';
 
@@ -10,24 +11,14 @@ const Color _squadNameColor = Color(0xFFEEEEEE);
 const Color _squadSubColor = Color(0xFFC8C8C8);
 
 /// My Squad — text-only cards (name, OVR, type, stat bars), no photos.
-class SquadScreen extends StatefulWidget {
+class SquadScreen extends ConsumerWidget {
   const SquadScreen({super.key});
 
   @override
-  State<SquadScreen> createState() => _SquadScreenState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    final uid = ref.watch(currentUidProvider);
+    final squadAsync = uid != null ? ref.watch(squadProvider(uid)) : null;
 
-class _SquadScreenState extends State<SquadScreen> {
-  late final List<CricketPlayer> _squad;
-
-  @override
-  void initState() {
-    super.initState();
-    _squad = buildDemoSquad();
-  }
-
-  @override
-  Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: GameColors.bg,
       appBar: AppBar(
@@ -49,68 +40,96 @@ class _SquadScreenState extends State<SquadScreen> {
           ),
         ),
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: GridView.builder(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                mainAxisSpacing: 12,
-                crossAxisSpacing: 12,
-                childAspectRatio: 0.95,
-              ),
-              itemCount: _squad.length,
-              itemBuilder: (context, index) {
-                final p = _squad[index];
-                return _SquadPlayerTile(
-                  player: p,
-                  onTap: () => context.push('/player/${p.id}', extra: p),
-                );
-              },
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-            child: Material(
-              color: const Color(0xFF2A2A2A),
-              borderRadius: BorderRadius.circular(16),
-              child: InkWell(
-                onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Pick 11 players — coming in match lobby'),
-                      behavior: SnackBarBehavior.floating,
+      body: uid == null
+          ? const Center(
+              child: Text('Sign in to view your squad.', style: TextStyle(color: Colors.white70)),
+            )
+          : Column(
+              children: [
+                Expanded(
+                  child: squadAsync!.when(
+                    loading: () => const Center(
+                      child: CircularProgressIndicator(color: GameColors.neon),
                     ),
-                  );
-                },
-                borderRadius: BorderRadius.circular(16),
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  alignment: Alignment.center,
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'Select Playing XI',
-                        style: TextStyle(
-                          color: _squadNameColor,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 15,
-                          letterSpacing: 0.3,
+                    error: (e, _) => Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Text(
+                          'Could not load squad: $e',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.red.shade200),
                         ),
                       ),
-                      SizedBox(width: 8),
-                      Icon(Icons.check_circle_outline, color: GameColors.neon, size: 22),
-                    ],
+                    ),
+                    data: (squad) {
+                      if (squad.isEmpty) {
+                        return Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Text(
+                              'No players in Firestore yet.\n'
+                              'They will appear here when you add cards (or seed data in the console).',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: GameColors.muted.withValues(alpha: 0.95),
+                                height: 1.4,
+                              ),
+                            ),
+                          ),
+                        );
+                      }
+                      return GridView.builder(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          mainAxisSpacing: 12,
+                          crossAxisSpacing: 12,
+                          childAspectRatio: 0.95,
+                        ),
+                        itemCount: squad.length,
+                        itemBuilder: (context, index) {
+                          final p = squad[index];
+                          return _SquadPlayerTile(
+                            player: p,
+                            onTap: () => context.push('/player/${p.id}', extra: p),
+                          );
+                        },
+                      );
+                    },
                   ),
                 ),
-              ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Pick 11 players — coming in match lobby'),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF2A2A2A),
+                      foregroundColor: _squadNameColor,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
+                    icon: const Icon(Icons.check_circle_outline, color: GameColors.neon, size: 22),
+                    label: const Text(
+                      'Select Playing XI',
+                      style: TextStyle(
+                        color: _squadNameColor,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ),
-        ],
-      ),
       bottomNavigationBar: const GameBottomNav(selectedIndex: 1),
     );
   }

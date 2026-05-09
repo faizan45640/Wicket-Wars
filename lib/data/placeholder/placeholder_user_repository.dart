@@ -9,10 +9,28 @@ class PlaceholderUserRepository implements UserRepository {
     _store.ensureInitialized();
   }
 
+  UserProfile _profileForUid(String uid) {
+    if (uid == InMemoryStore.demoUid) return _store.demoProfile;
+    final base = _store.demoProfile;
+    return UserProfile(
+      uid: uid,
+      displayName: base.displayName,
+      email: base.email,
+      coins: base.coins,
+      rankingPoints: base.rankingPoints,
+      leagueTier: base.leagueTier,
+      wins: base.wins,
+      losses: base.losses,
+      matchesPlayed: base.matchesPlayed,
+      lastDailyRewardClaimAt: base.lastDailyRewardClaimAt,
+      createdAt: base.createdAt,
+    );
+  }
+
   @override
   Future<UserProfile?> getProfile(String uid) async {
-    if (uid == InMemoryStore.demoUid) return _store.demoProfile;
-    return null;
+    if (uid.isEmpty) return null;
+    return _profileForUid(uid);
   }
 
   @override

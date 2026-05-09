@@ -1,7 +1,8 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import 'auth/auth_controller.dart';
+import 'auth/go_router_auth_refresh.dart';
 import 'theme/game_colors.dart';
 import 'screens/home_screen.dart';
 import 'screens/leaderboard_screen.dart';
@@ -17,9 +18,9 @@ import 'screens/squad_screen.dart';
 /// Central routing. Unauthenticated users are sent to [LoginScreen] via [redirect].
 final GoRouter appRouter = GoRouter(
   initialLocation: '/',
-  refreshListenable: authController,
+  refreshListenable: goRouterAuthRefresh,
   redirect: (BuildContext context, GoRouterState state) {
-    final loggedIn = authController.isSignedIn;
+    final loggedIn = FirebaseAuth.instance.currentUser != null;
     final path = state.matchedLocation;
     final authRoute = path == '/login' || path == '/signup';
     if (!loggedIn && !authRoute) {

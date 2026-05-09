@@ -1,15 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../auth/auth_controller.dart';
+import '../data/providers.dart';
 import '../theme/game_colors.dart';
 import '../widgets/game_bottom_nav.dart';
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     // Defining the neon color here for easy access,
     // you can also move this to your GameColors class.
     const Color neonGreen = Color(0xFF00FF00);
@@ -35,18 +36,16 @@ class ProfileScreen extends StatelessWidget {
           ),
         ),
       ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-          child: Column(
-            children: [
-              // --- UPDATED NEON PROFILE IMAGE ---
-              Container(
-                width: 100,
-                height: 100,
+      body: ListView(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        children: [
+          Center(
+            child: CircleAvatar(
+              radius: 50,
+              backgroundColor: GameColors.bg,
+              child: Container(
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: GameColors.bg,
                   border: Border.all(color: neonGreen, width: 2.5),
                   boxShadow: [
                     BoxShadow(
@@ -56,7 +55,9 @@ class ProfileScreen extends StatelessWidget {
                     ),
                   ],
                 ),
-                child: const Center(
+                child: const CircleAvatar(
+                  radius: 50,
+                  backgroundColor: GameColors.bg,
                   child: Text(
                     'P',
                     style: TextStyle(
@@ -68,120 +69,75 @@ class ProfileScreen extends StatelessWidget {
                   ),
                 ),
               ),
-
-              // ----------------------------------
-              const SizedBox(height: 16),
-              // Player Name
-              const Text(
-                'Player One',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 24,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(height: 32),
-              // Stats Cards
-              _buildStatCard(
-                icon: Icons.sports_cricket_outlined,
-                title: 'Total Matches',
-                value: '342',
-              ),
-              const SizedBox(height: 12),
-              _buildStatCard(
-                icon: Icons.emoji_events_outlined,
-                title: 'Wins',
-                value: '198',
-              ),
-              const SizedBox(height: 12),
-              _buildStatCard(
-                icon: Icons.percent_outlined,
-                title: 'Win Rate',
-                value: '58%',
-              ),
-              const SizedBox(height: 12),
-              _buildStatCard(
-                icon: Icons.sports_baseball_outlined,
-                title: 'Total Runs',
-                value: '12,450',
-              ),
-              const SizedBox(height: 12),
-              _buildStatCard(
-                icon: Icons.star_border_rounded,
-                title: 'Ranking Points',
-                value: '1250',
-              ),
-              const SizedBox(height: 12),
-              _buildStatCard(
-                icon: Icons.monetization_on_outlined,
-                title: 'Coins',
-                value: '430',
-              ),
-              const SizedBox(height: 32),
-              OutlinedButton(
-                onPressed: () {
-                  authController.signOut();
-                },
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFFE57373),
-                  side: const BorderSide(color: Color(0xFF4A2C2C)),
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                ),
-                child: const Text(
-                  'Log out',
-                  style: TextStyle(fontWeight: FontWeight.w700),
-                ),
-              ),
-            ],
+            ),
           ),
-        ),
+          const SizedBox(height: 16),
+          const Center(
+            child: Text(
+              'Player One',
+              style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800),
+            ),
+          ),
+          const SizedBox(height: 24),
+          Card(
+            color: GameColors.card,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: const BorderSide(color: GameColors.cardBorder),
+            ),
+            elevation: 0,
+            child: Column(
+              children: [
+                _buildStatTile(icon: Icons.sports_cricket_outlined, title: 'Total Matches', value: '342'),
+                _buildStatTile(icon: Icons.emoji_events_outlined, title: 'Wins', value: '198'),
+                _buildStatTile(icon: Icons.percent_outlined, title: 'Win Rate', value: '58%'),
+                _buildStatTile(icon: Icons.sports_baseball_outlined, title: 'Total Runs', value: '12,450'),
+                _buildStatTile(icon: Icons.star_border_rounded, title: 'Ranking Points', value: '1250'),
+                _buildStatTile(icon: Icons.monetization_on_outlined, title: 'Coins', value: '430', isLast: true),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+          OutlinedButton(
+            onPressed: () async {
+              await ref.read(authRepositoryProvider).signOut();
+            },
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFFE57373),
+              side: const BorderSide(color: Color(0xFF4A2C2C)),
+              padding: const EdgeInsets.symmetric(vertical: 16),
+            ),
+            child: const Text('Log out', style: TextStyle(fontWeight: FontWeight.w700)),
+          ),
+        ],
       ),
       bottomNavigationBar: const GameBottomNav(selectedIndex: 3),
     );
   }
 
-  Widget _buildStatCard({
+  static Widget _buildStatTile({
     required IconData icon,
     required String title,
     required String value,
+    bool isLast = false,
   }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      decoration: BoxDecoration(
-        color: GameColors.card,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: GameColors.cardBorder),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: Colors.white, size: 32),
-          const SizedBox(width: 20),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  value,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
+    return Column(
+      children: [
+        ListTile(
+          leading: Icon(icon, color: Colors.white, size: 28),
+          title: Text(
+            title,
+            style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w600),
           ),
-        ],
-      ),
+          trailing: Text(
+            value,
+            style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+        ),
+        if (!isLast)
+          Divider(height: 1, thickness: 1, color: GameColors.cardBorder.withValues(alpha: 0.5),
+              indent: 16, endIndent: 16),
+      ],
     );
   }
 }

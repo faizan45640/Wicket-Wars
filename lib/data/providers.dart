@@ -6,42 +6,45 @@ import 'models/leaderboard_entry.dart';
 import 'models/match_room.dart';
 import 'models/match_summary.dart';
 import 'models/user_profile.dart';
-import 'placeholder/placeholder_auth_repository.dart';
-import 'placeholder/placeholder_leaderboard_repository.dart';
-import 'placeholder/placeholder_match_history_repository.dart';
-import 'placeholder/placeholder_match_repository.dart';
-import 'placeholder/placeholder_squad_repository.dart';
-import 'placeholder/placeholder_user_repository.dart';
+import 'repositories/firebase_leaderboard_repository.dart';
+import 'repositories/firebase_match_history_repository.dart';
+import 'repositories/firebase_match_repository.dart';
+import 'repositories/firebase_squad_repository.dart';
+import 'repositories/firebase_user_repository.dart';
 import 'repositories/auth_repository.dart';
+import 'repositories/firebase_auth_repository.dart';
 import 'repositories/leaderboard_repository.dart';
 import 'repositories/match_history_repository.dart';
 import 'repositories/match_repository.dart';
 import 'repositories/squad_repository.dart';
 import 'repositories/user_repository.dart';
 
-/// Swap these for `Firebase*` implementations after `flutterfire configure`.
+/// Uses [FirebaseAuthRepository]. Swap to [PlaceholderAuthRepository] for offline-only runs.
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
-  return PlaceholderAuthRepository();
+  return FirebaseAuthRepository();
 });
 
+/// Data layer: production uses [FirebaseUserRepository], [FirebaseSquadRepository], etc.
+/// In widget tests, override these providers with `Placeholder*` repositories so Firestore
+/// is not required (see `test/widget_test.dart`).
 final userRepositoryProvider = Provider<UserRepository>((ref) {
-  return PlaceholderUserRepository();
+  return FirebaseUserRepository();
 });
 
 final squadRepositoryProvider = Provider<SquadRepository>((ref) {
-  return PlaceholderSquadRepository();
+  return FirebaseSquadRepository();
 });
 
 final matchRepositoryProvider = Provider<MatchRepository>((ref) {
-  return PlaceholderMatchRepository();
+  return FirebaseMatchRepository();
 });
 
 final leaderboardRepositoryProvider = Provider<LeaderboardRepository>((ref) {
-  return PlaceholderLeaderboardRepository();
+  return FirebaseLeaderboardRepository();
 });
 
 final matchHistoryRepositoryProvider = Provider<MatchHistoryRepository>((ref) {
-  return PlaceholderMatchHistoryRepository();
+  return FirebaseMatchHistoryRepository();
 });
 
 final authStateProvider = StreamProvider<AppUser?>((ref) {

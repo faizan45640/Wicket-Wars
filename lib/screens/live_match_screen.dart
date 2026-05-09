@@ -106,11 +106,10 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
       appBar: AppBar(
         backgroundColor: GameColors.bg,
         elevation: 0,
+        scrolledUnderElevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded, color: GameColors.neon, size: 20),
           onPressed: () {
-            // [context.canPop] = was this route *pushed* on top of another? If we opened
-            // this screen with [go] (replace), there is nothing to pop; fall back to [go('/')].
             if (context.canPop()) {
               context.pop();
             } else {
@@ -118,54 +117,54 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
             }
           },
         ),
-        centerTitle: true,
-        title: const Text(
-          'LIVE',
-          style: TextStyle(
-            color: Color(0xFFF5F5F5),
-            fontWeight: FontWeight.w900,
-            fontSize: 16,
-            letterSpacing: 1.2,
-          ),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${HardcodedLiveMatch.teamUser}  vs  ${HardcodedLiveMatch.teamOpp}',
+              style: const TextStyle(
+                color: Color(0xFFEEEEEE),
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            Text(
+              '$_runs / $_wickets',
+              style: TextStyle(
+                color: GameColors.neon,
+                fontSize: 16,
+                fontWeight: FontWeight.w900,
+                height: 1.2,
+              ),
+            ),
+          ],
         ),
         actions: [
           Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1E3A1E),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: GameColors.neon.withValues(alpha: 0.35)),
+            padding: const EdgeInsets.only(right: 16),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                const Text(
+                  'OVERS',
+                  style: TextStyle(color: GameColors.muted, fontSize: 9, fontWeight: FontWeight.w800),
                 ),
-                child: const Text(
-                  'DEMO',
-                  style: TextStyle(
-                    color: GameColors.neon,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                  ),
+                Text(
+                  '$overs / ${HardcodedLiveMatch.maxOvers}',
+                  style: TextStyle(color: GameColors.muted.withValues(alpha: 0.9), fontSize: 14, fontWeight: FontWeight.w700),
                 ),
-              ),
+              ],
             ),
           ),
         ],
       ),
-      // [Column] > [Expanded] > [ListView]: see file header — avoids vertical overflow.
       body: Column(
         children: [
-          // Fixed-height strip; not inside the [ListView] so it always stays visible.
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: _NavDisabledStrip(),
-          ),
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
               children: [
-                _headerScore(overs: overs, runs: _runs, wk: _wickets),
-                const SizedBox(height: 16),
                 _commentaryBlock(),
                 const SizedBox(height: 20),
                 _playerCardBatsman(),
@@ -228,78 +227,6 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
     );
   }
 
-  Widget _headerScore({required String overs, required int runs, required int wk}) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1C1C1C),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: GameColors.cardBorder),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'TEAMS',
-            style: TextStyle(
-              color: GameColors.muted,
-              fontSize: 10,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0.6,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '${HardcodedLiveMatch.teamUser}  vs  ${HardcodedLiveMatch.teamOpp}',
-            style: const TextStyle(
-              color: Color(0xFFEEEEEE),
-              fontSize: 17,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              _headChip('RUNS', '$runs', GameColors.neon),
-              const SizedBox(width: 10),
-              _headChip('WICKETS', '$wk', const Color(0xFFFF8A80)),
-              const Spacer(),
-              _headChip('OVERS', '$overs / ${HardcodedLiveMatch.maxOvers}', GameColors.muted),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  static Widget _headChip(String label, String value, Color accent) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            color: GameColors.muted,
-            fontSize: 9,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0.5,
-          ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          value,
-          style: TextStyle(
-            color: accent,
-            fontSize: 18,
-            fontWeight: FontWeight.w900,
-            height: 1.1,
-          ),
-        ),
-      ],
-    );
-  }
-
   Widget _commentaryBlock() {
     final lines = _commentary;
     final start = _window.clamp(0, _maxWindow);
@@ -307,14 +234,15 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
     // [sublist] is a cheap "view" into the list — no copy of all strings.
     final view = lines.sublist(start, end);
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
-      decoration: BoxDecoration(
-        color: GameColors.card,
+    return Card(
+      color: GameColors.card,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: GameColors.cardBorder),
+        side: const BorderSide(color: GameColors.cardBorder),
       ),
+      elevation: 0,
+      child: Padding(
+      padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -362,6 +290,7 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
             ],
           ),
         ],
+      ),
       ),
     );
   }
@@ -679,25 +608,19 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
   }
 
   Widget _simulateButton() {
-    // [FilledButton] = Material 3 primary filled style; [icon] is shown before [label].
-    return FilledButton.icon(
+    return ElevatedButton.icon(
       onPressed: _simulate,
-      style: FilledButton.styleFrom(
+      style: ElevatedButton.styleFrom(
         backgroundColor: GameColors.neon,
         foregroundColor: GameColors.onNeonButton,
+        elevation: 0,
         padding: const EdgeInsets.symmetric(vertical: 18),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
       icon: const Icon(Icons.sports_cricket, size: 28),
       label: const Text(
         'NEXT BALL / SIMULATE',
-        style: TextStyle(
-          fontWeight: FontWeight.w900,
-          fontSize: 16,
-          letterSpacing: 0.2,
-        ),
+        style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, letterSpacing: 0.2),
       ),
     );
   }
@@ -720,26 +643,21 @@ class _RoleCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-      decoration: BoxDecoration(
-        color: GameColors.card,
+    return Card(
+      color: GameColors.card,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: GameColors.cardBorder),
+        side: const BorderSide(color: GameColors.cardBorder),
       ),
+      elevation: 0,
+      child: Padding(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: const Color(0xFF0E0E0E),
-              border: Border.all(color: GameColors.neon.withValues(alpha: 0.5), width: 2),
-            ),
-            alignment: Alignment.center,
+          CircleAvatar(
+            radius: 28,
+            backgroundColor: const Color(0xFF0E0E0E),
             child: Text(
               initial,
               style: const TextStyle(
@@ -779,41 +697,8 @@ class _RoleCard extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-/// Shown at top of [body] so the user knows why bottom tabs don't navigate away.
-class _NavDisabledStrip extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    // [Material] gives a splash/ink if you later wrap in [InkWell]; also sets text color.
-    return Material(
-      color: const Color(0xFF252525),
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        child: Row(
-          children: [
-            Icon(
-              Icons.block,
-              size: 16,
-              color: GameColors.muted.withValues(alpha: 0.8),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'Navigation tabs locked during play — use the back arrow to leave.',
-                style: TextStyle(
-                  color: GameColors.muted.withValues(alpha: 0.9),
-                  fontSize: 11,
-                  height: 1.25,
-                ),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
 }
+

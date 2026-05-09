@@ -1,29 +1,46 @@
-import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_core_platform_interface/test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:wicket_wars/auth/demo_credentials.dart';
+import 'package:wicket_wars/data/placeholder/placeholder_leaderboard_repository.dart';
+import 'package:wicket_wars/data/placeholder/placeholder_match_history_repository.dart';
+import 'package:wicket_wars/data/placeholder/placeholder_match_repository.dart';
+import 'package:wicket_wars/data/placeholder/placeholder_squad_repository.dart';
+import 'package:wicket_wars/data/placeholder/placeholder_user_repository.dart';
+import 'package:wicket_wars/data/providers.dart';
+import 'package:wicket_wars/firebase_options.dart';
 import 'package:wicket_wars/main.dart';
 
 void main() {
-  testWidgets('Home dashboard loads after login', (WidgetTester tester) async {
+  setUpAll(() async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    setupFirebaseCoreMocks();
+    try {
+      await Firebase.initializeApp(options: DefaultFirebaseOptions.android);
+    } on FirebaseException catch (e) {
+      if (e.code != 'duplicate-app') rethrow;
+    }
+  });
+
+  testWidgets('Login screen shows when signed out', (WidgetTester tester) async {
     await tester.pumpWidget(
-      const ProviderScope(
-        child: MyApp(),
+      ProviderScope(
+        overrides: [
+          userRepositoryProvider.overrideWith((ref) => PlaceholderUserRepository()),
+          squadRepositoryProvider.overrideWith((ref) => PlaceholderSquadRepository()),
+          matchRepositoryProvider.overrideWith((ref) => PlaceholderMatchRepository()),
+          leaderboardRepositoryProvider
+              .overrideWith((ref) => PlaceholderLeaderboardRepository()),
+          matchHistoryRepositoryProvider
+              .overrideWith((ref) => PlaceholderMatchHistoryRepository()),
+        ],
+        child: const MyApp(),
       ),
     );
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('WICKET WARS'), findsOneWidget);
-    await tester.enterText(find.byKey(const Key('login_email')), kDemoEmail);
-    await tester.enterText(
-      find.byKey(const Key('login_password')),
-      kDemoPassword,
-    );
-    await tester.tap(find.text('LOG IN'));
-    await tester.pumpAndSettle();
-
-    expect(find.textContaining('CRICKET SIM MASTER'), findsOneWidget);
-    expect(find.text('Player123'), findsOneWidget);
+    expect(find.text('WICKET WARS'), findsOneWidget);
+    expect(find.text('LOG IN'), findsOneWidget);
   });
 }

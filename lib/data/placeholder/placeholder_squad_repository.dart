@@ -11,12 +11,13 @@ class PlaceholderSquadRepository implements SquadRepository {
 
   @override
   Future<List<CricketPlayer>> getSquad(String uid) async {
-    if (uid != InMemoryStore.demoUid) return [];
+    if (uid.isEmpty) return [];
     return _store.demoPlayersById.values.toList();
   }
 
   @override
   Future<void> upsertPlayer(String uid, CricketPlayer player) async {
+    if (uid.isEmpty) return;
     if (uid != InMemoryStore.demoUid) return;
     _store.demoPlayersById[player.id] = player;
   }

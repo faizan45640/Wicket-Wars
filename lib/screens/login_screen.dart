@@ -1,22 +1,24 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../auth/auth_controller.dart';
-import '../auth/demo_credentials.dart';
+import '../auth/auth_messages.dart';
+import '../data/providers.dart';
 import '../theme/game_colors.dart';
 
-class LoginScreen extends StatefulWidget {
+class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  ConsumerState<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _email = TextEditingController();
   final _password = TextEditingController();
   var _obscure = true;
+  var _loading = false;
 
   @override
   void dispose() {
@@ -25,22 +27,26 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
-    final ok = authController.signInWithPassword(
-      _email.text,
-      _password.text,
-    );
-    if (!mounted) return;
-    if (ok) {
+    setState(() => _loading = true);
+    try {
+      await ref.read(authRepositoryProvider).signInWithEmailAndPassword(
+            email: _email.text,
+            password: _password.text,
+          );
+      if (!mounted) return;
       context.go('/');
-    } else {
+    } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Invalid email or password.'),
+        SnackBar(
+          content: Text(authErrorMessage(e)),
           backgroundColor: GameColors.card,
         ),
       );
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -122,7 +128,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 28),
                     FilledButton(
-                      onPressed: _submit,
+                      onPressed: _loading ? null : _submit,
                       style: FilledButton.styleFrom(
                         backgroundColor: GameColors.neon,
                         foregroundColor: GameColors.onNeonButton,
@@ -131,17 +137,26 @@ class _LoginScreenState extends State<LoginScreen> {
                           borderRadius: BorderRadius.circular(14),
                         ),
                       ),
-                      child: const Text(
-                        'LOG IN',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.6,
-                        ),
-                      ),
+                      child: _loading
+                          ? SizedBox(
+                              height: 22,
+                              width: 22,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: GameColors.onNeonButton,
+                              ),
+                            )
+                          : const Text(
+                              'LOG IN',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.6,
+                              ),
+                            ),
                     ),
                     const SizedBox(height: 20),
                     Text(
-                      'Demo: $kDemoEmail / $kDemoPassword',
+                      'Use the email and password from Sign up.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: GameColors.muted.withValues(alpha: 0.85),
@@ -159,7 +174,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ),
                         TextButton(
-                          onPressed: () => context.push('/signup'),
+                          onPressed: _loading ? null : () => context.push('/signup'),
                           child: const Text(
                             'Sign up',
                             style: TextStyle(

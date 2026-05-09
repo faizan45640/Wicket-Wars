@@ -1,23 +1,26 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../auth/auth_controller.dart';
+import '../auth/auth_messages.dart';
+import '../data/providers.dart';
 import '../theme/game_colors.dart';
 
-class SignupScreen extends StatefulWidget {
+class SignupScreen extends ConsumerStatefulWidget {
   const SignupScreen({super.key});
 
   @override
-  State<SignupScreen> createState() => _SignupScreenState();
+  ConsumerState<SignupScreen> createState() => _SignupScreenState();
 }
 
-class _SignupScreenState extends State<SignupScreen> {
+class _SignupScreenState extends ConsumerState<SignupScreen> {
   final _formKey = GlobalKey<FormState>();
   final _email = TextEditingController();
   final _password = TextEditingController();
   final _confirm = TextEditingController();
   var _obscure = true;
   var _obscure2 = true;
+  var _loading = false;
 
   @override
   void dispose() {
@@ -27,25 +30,32 @@ class _SignupScreenState extends State<SignupScreen> {
     super.dispose();
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
-    final err = authController.register(_email.text, _password.text);
-    if (!mounted) return;
-    if (err != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(err),
-          backgroundColor: GameColors.card,
-        ),
-      );
-    } else {
+    setState(() => _loading = true);
+    try {
+      await ref.read(authRepositoryProvider).createUserWithEmailAndPassword(
+            email: _email.text,
+            password: _password.text,
+          );
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Account created. Sign in with your email and password.'),
+          content: Text('Welcome to Wicket Wars!'),
           backgroundColor: GameColors.card,
         ),
       );
-      context.pop();
+      context.go('/');
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(authErrorMessage(e)),
+          backgroundColor: GameColors.card,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -56,124 +66,163 @@ class _SignupScreenState extends State<SignupScreen> {
       appBar: AppBar(
         backgroundColor: GameColors.bg,
         elevation: 0,
+        scrolledUnderElevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded, color: GameColors.neon),
-          onPressed: () => context.pop(),
+          onPressed: _loading ? null : () => context.pop(),
         ),
-        title: const Text(
-          'CREATE ACCOUNT',
-          style: TextStyle(
-            fontWeight: FontWeight.w800,
-            fontSize: 16,
-            letterSpacing: 0.5,
-            color: Colors.white,
-          ),
-        ),
-        centerTitle: true,
       ),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 400),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const SizedBox(height: 8),
-                  Text(
-                    'Register for this device session. New accounts are kept in memory until you close the app.',
-                    style: TextStyle(
-                      color: GameColors.muted.withValues(alpha: 0.9),
-                      fontSize: 13,
-                      height: 1.4,
-                    ),
-                  ),
-                  const SizedBox(height: 28),
-                  TextFormField(
-                    controller: _email,
-                    keyboardType: TextInputType.emailAddress,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: _fieldDecoration('Email'),
-                    autofillHints: const [AutofillHints.email],
-                    validator: (v) {
-                      if (v == null || v.trim().isEmpty) {
-                        return 'Enter an email';
-                      }
-                      if (!v.contains('@')) {
-                        return 'Enter a valid email';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _password,
-                    obscureText: _obscure,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: _fieldDecoration('Password').copyWith(
-                      suffixIcon: IconButton(
-                        onPressed: () => setState(() => _obscure = !_obscure),
-                        icon: Icon(
-                          _obscure
-                              ? Icons.visibility_outlined
-                              : Icons.visibility_off_outlined,
-                          color: GameColors.muted,
-                        ),
-                      ),
-                    ),
-                    autofillHints: const [AutofillHints.newPassword],
-                    validator: (v) {
-                      if (v == null || v.length < 4) {
-                        return 'At least 4 characters';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _confirm,
-                    obscureText: _obscure2,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: _fieldDecoration('Confirm password').copyWith(
-                      suffixIcon: IconButton(
-                        onPressed: () => setState(() => _obscure2 = !_obscure2),
-                        icon: Icon(
-                          _obscure2
-                              ? Icons.visibility_outlined
-                              : Icons.visibility_off_outlined,
-                          color: GameColors.muted,
-                        ),
-                      ),
-                    ),
-                    validator: (v) {
-                      if (v != _password.text) {
-                        return 'Passwords do not match';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 28),
-                  FilledButton(
-                    onPressed: _submit,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: GameColors.neon,
-                      foregroundColor: GameColors.onNeonButton,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-                    child: const Text(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 400),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SizedBox(height: 8),
+                    const Text(
                       'CREATE ACCOUNT',
+                      textAlign: TextAlign.center,
                       style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.5,
+                        color: GameColors.neon,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.8,
                       ),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 10),
+                    Text(
+                      'Creates your Firebase account and signs you in.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: GameColors.muted.withValues(alpha: 0.92),
+                        fontSize: 13,
+                        height: 1.45,
+                      ),
+                    ),
+                    const SizedBox(height: 32),
+                    TextFormField(
+                      controller: _email,
+                      keyboardType: TextInputType.emailAddress,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: _fieldDecoration('Email'),
+                      autofillHints: const [AutofillHints.email],
+                      validator: (v) {
+                        if (v == null || v.trim().isEmpty) {
+                          return 'Enter an email';
+                        }
+                        if (!v.contains('@')) {
+                          return 'Enter a valid email';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _password,
+                      obscureText: _obscure,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: _fieldDecoration('Password').copyWith(
+                        suffixIcon: IconButton(
+                          onPressed: () => setState(() => _obscure = !_obscure),
+                          icon: Icon(
+                            _obscure
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
+                            color: GameColors.muted,
+                          ),
+                        ),
+                      ),
+                      autofillHints: const [AutofillHints.newPassword],
+                      validator: (v) {
+                        if (v == null || v.length < 6) {
+                          return 'At least 6 characters (Firebase rule)';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _confirm,
+                      obscureText: _obscure2,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: _fieldDecoration('Confirm password').copyWith(
+                        suffixIcon: IconButton(
+                          onPressed: () => setState(() => _obscure2 = !_obscure2),
+                          icon: Icon(
+                            _obscure2
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
+                            color: GameColors.muted,
+                          ),
+                        ),
+                      ),
+                      validator: (v) {
+                        if (v != _password.text) {
+                          return 'Passwords do not match';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 28),
+                    FilledButton(
+                      onPressed: _loading ? null : _submit,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: GameColors.neon,
+                        foregroundColor: GameColors.onNeonButton,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      child: _loading
+                          ? SizedBox(
+                              height: 22,
+                              width: 22,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: GameColors.onNeonButton,
+                              ),
+                            )
+                          : const Text(
+                              'CREATE ACCOUNT',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          'Already registered? ',
+                          style: TextStyle(
+                            color: GameColors.muted.withValues(alpha: 0.9),
+                            fontSize: 13,
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: _loading ? null : () => context.pop(),
+                          style: TextButton.styleFrom(
+                            foregroundColor: GameColors.neon,
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                          ),
+                          child: const Text(
+                            'Sign in',
+                            style: TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

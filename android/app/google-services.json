@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "319913157269",
+    "project_id": "wicket-wars-d45a0",
+    "storage_bucket": "wicket-wars-d45a0.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:319913157269:android:dbb928596c3cf79addf19c",
+        "android_client_info": {
+          "package_name": "com.android.wicket_wars"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCKi9jziC79vWKbUUHH0uHcU1qiFC4B1ec"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

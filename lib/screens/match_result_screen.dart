@@ -30,9 +30,11 @@ class MatchResultScreen extends StatelessWidget {
           ),
         ),
       ),
-      body: ListView(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-        children: [
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
           const Text(
             'WINNER / FINAL SCORE',
             style: TextStyle(
@@ -104,11 +106,12 @@ class MatchResultScreen extends StatelessWidget {
           const SizedBox(height: 24),
           _RewardsBox(coins: HardcodedMatchResult.coinsEarned),
           const SizedBox(height: 28),
-          FilledButton(
+          ElevatedButton(
             onPressed: () => context.go('/'),
-            style: FilledButton.styleFrom(
+            style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF2C2C2C),
               foregroundColor: const Color(0xFFF0F0F0),
+              elevation: 0,
               padding: const EdgeInsets.symmetric(vertical: 16),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(14),
@@ -134,6 +137,7 @@ class MatchResultScreen extends StatelessWidget {
             ),
           ),
         ],
+        ),
       ),
       bottomNavigationBar: const GameBottomNav(selectedIndex: 2),
     );
@@ -148,14 +152,15 @@ class _InningsLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: GameColors.card,
+    return Card(
+      color: GameColors.card,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: GameColors.cardBorder),
+        side: const BorderSide(color: GameColors.cardBorder),
       ),
+      elevation: 0,
+      child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -187,6 +192,7 @@ class _InningsLine extends StatelessWidget {
           ),
         ],
       ),
+      ),
     );
   }
 }
@@ -215,13 +221,15 @@ class _CompareCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
+    return Card(
+      color: const Color(0xFF1A1A1A),
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: GameColors.cardBorder),
+        side: const BorderSide(color: GameColors.cardBorder),
       ),
+      elevation: 0,
+      child: Padding(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -254,6 +262,7 @@ class _CompareCard extends StatelessWidget {
             const Color(0xFF4DD0E1),
           ),
         ],
+      ),
       ),
     );
   }
@@ -412,27 +421,30 @@ class _RewardsBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: const Color(0xFF2A2A2A),
+    return Card(
+      color: const Color(0xFF2A2A2A),
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: GameColors.cardBorder),
+        side: const BorderSide(color: GameColors.cardBorder),
       ),
-      child: Row(
-        children: [
-          const Icon(Icons.star_rate_rounded, color: Colors.amber, size: 32),
-          const SizedBox(width: 12),
-          Text(
-            'COINS EARNED: $coins',
-            style: const TextStyle(
-              color: Color(0xFFF5F5F5),
-              fontSize: 16,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0.3,
+      elevation: 0,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          children: [
+            const Icon(Icons.star_rate_rounded, color: Colors.amber, size: 32),
+            const SizedBox(width: 12),
+            Text(
+              'COINS EARNED: $coins',
+              style: const TextStyle(
+                color: Color(0xFFF5F5F5),
+                fontSize: 16,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 0.3,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

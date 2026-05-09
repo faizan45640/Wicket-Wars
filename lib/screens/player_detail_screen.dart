@@ -230,27 +230,38 @@ class _PlayerDetailScreenState extends State<PlayerDetailScreen> {
           ),
           const SizedBox(height: 8),
           Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
-              children: [
-                const _ScrollHintArrows(),
-                const SizedBox(height: 4),
-                _AttributeBar(label: 'BATTING', value: a.batting, color: const Color(0xFF64B5F6)),
-                const SizedBox(height: 10),
-                _AttributeBar(label: 'BOWLING', value: a.bowling, color: const Color(0xFFFFB74D)),
-                const SizedBox(height: 10),
-                _AttributeBar(label: 'FIELDING', value: a.fielding, color: const Color(0xFF81C784)),
-                const SizedBox(height: 10),
-                _AttributeBar(label: 'STAMINA', value: a.stamina, color: const Color(0xFFBA68C8)),
-                const SizedBox(height: 10),
-                _AttributeBar(
-                  label: 'CONSISTENCY',
-                  value: a.consistency,
-                  color: const Color(0xFF4DD0E1),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Card(
+                color: GameColors.card,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  side: const BorderSide(color: GameColors.cardBorder),
                 ),
-                const SizedBox(height: 8),
-                const _ScrollHintArrows(down: true),
-              ],
+                elevation: 0,
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                  children: [
+                    const _ScrollHintArrows(),
+                    const SizedBox(height: 4),
+                    _AttributeBar(label: 'BATTING', value: a.batting, color: const Color(0xFF64B5F6)),
+                    const SizedBox(height: 10),
+                    _AttributeBar(label: 'BOWLING', value: a.bowling, color: const Color(0xFFFFB74D)),
+                    const SizedBox(height: 10),
+                    _AttributeBar(label: 'FIELDING', value: a.fielding, color: const Color(0xFF81C784)),
+                    const SizedBox(height: 10),
+                    _AttributeBar(label: 'STAMINA', value: a.stamina, color: const Color(0xFFBA68C8)),
+                    const SizedBox(height: 10),
+                    _AttributeBar(
+                      label: 'CONSISTENCY',
+                      value: a.consistency,
+                      color: const Color(0xFF4DD0E1),
+                    ),
+                    const SizedBox(height: 8),
+                    const _ScrollHintArrows(down: true),
+                  ],
+                ),
+              ),
             ),
           ),
           Padding(
@@ -258,18 +269,19 @@ class _PlayerDetailScreenState extends State<PlayerDetailScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                FilledButton.icon(
+                ElevatedButton.icon(
                   onPressed: _player.isTraining ? null : _startTraining,
-                  style: FilledButton.styleFrom(
+                  style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF2E4A2E),
                     foregroundColor: const Color(0xFFE0E0E0),
+                    disabledBackgroundColor: const Color(0xFF1E1E1E),
+                    disabledForegroundColor: GameColors.muted,
+                    elevation: 0,
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
                       side: BorderSide(color: GameColors.neon.withValues(alpha: 0.4)),
                     ),
-                    disabledBackgroundColor: const Color(0xFF1E1E1E),
-                    disabledForegroundColor: GameColors.muted,
                   ),
                   icon: Icon(
                     Icons.fitness_center_rounded,
@@ -285,15 +297,14 @@ class _PlayerDetailScreenState extends State<PlayerDetailScreen> {
                   ),
                 ),
                 const SizedBox(height: 10),
-                FilledButton.icon(
+                ElevatedButton.icon(
                   onPressed: _upgradeInstant,
-                  style: FilledButton.styleFrom(
+                  style: ElevatedButton.styleFrom(
                     backgroundColor: GameColors.neon,
                     foregroundColor: GameColors.onNeonButton,
+                    elevation: 0,
                     padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                   ),
                   icon: const Icon(Icons.trending_up_rounded, size: 24),
                   label: const Text(
@@ -344,49 +355,25 @@ class _SummaryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final path = cardImageAsset?.trim() ?? '';
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
-      decoration: BoxDecoration(
-        color: GameColors.card,
+    return Card(
+      color: GameColors.card,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: GameColors.cardBorder),
-        boxShadow: [
-          BoxShadow(
-            color: GameColors.neon.withValues(alpha: 0.06),
-            blurRadius: 20,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        side: const BorderSide(color: GameColors.cardBorder),
       ),
-      child: Column(
+      elevation: 0,
+      shadowColor: GameColors.neon.withValues(alpha: 0.06),
+      child: Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Text(
-                  name,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Color(0xFFF0F0F0),
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 0.2,
-                  ),
-                ),
-              ),
-              _OvrStarburst(ovr: ovr),
-            ],
-          ),
-          const SizedBox(height: 20),
           Container(
-            width: 132,
-            height: 132,
+            width: 72,
+            height: 72,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(color: GameColors.neon.withValues(alpha: 0.6), width: 2.5),
+              border: Border.all(color: GameColors.neon.withValues(alpha: 0.6), width: 2),
             ),
             clipBehavior: Clip.antiAlias,
             child: path.isNotEmpty
@@ -397,7 +384,24 @@ class _SummaryCard extends StatelessWidget {
                   )
                 : _LetterAvatar(initial: initial),
           ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Text(
+              name,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Color(0xFFF0F0F0),
+                fontSize: 20,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 0.2,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          _OvrStarburst(ovr: ovr),
         ],
+      ),
       ),
     );
   }
@@ -417,7 +421,7 @@ class _LetterAvatar extends StatelessWidget {
           initial,
           style: const TextStyle(
             color: GameColors.neon,
-            fontSize: 40,
+            fontSize: 28,
             fontWeight: FontWeight.w900,
           ),
         ),

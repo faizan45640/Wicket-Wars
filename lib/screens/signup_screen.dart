@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../auth/auth_messages.dart';
+import '../auth/password_crypto.dart';
 import '../data/providers.dart';
 import '../theme/game_colors.dart';
 
@@ -34,9 +35,12 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     setState(() => _loading = true);
     try {
+      final encrypted = PasswordCrypto.encryptPassword(_password.text);
+      final passwordForAuth =
+          PasswordCrypto.decryptPassword(encrypted);
       await ref.read(authRepositoryProvider).createUserWithEmailAndPassword(
             email: _email.text,
-            password: _password.text,
+            password: passwordForAuth,
           );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

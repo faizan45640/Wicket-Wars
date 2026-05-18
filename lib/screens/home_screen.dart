@@ -16,6 +16,27 @@ class HomeScreen extends ConsumerWidget {
 
   static final NumberFormat _coinFormat = NumberFormat.decimalPattern('en_US');
 
+  static bool _canClaimDaily(UserProfile p) {
+    final last = p.lastDailyRewardClaimAt;
+    if (last == null) return true;
+    final t = DateTime.now();
+    final today = DateTime(t.year, t.month, t.day);
+    final lastDay = DateTime(last.year, last.month, last.day);
+    return today.isAfter(lastDay);
+  }
+
+  static String _squadSubtitle(WidgetRef ref) {
+    final uid = ref.watch(currentUidProvider);
+    if (uid == null) return 'Sign in';
+    final squad = ref.watch(squadProvider(uid));
+    return squad.maybeWhen(
+      data: (s) =>
+          s.isEmpty ? '0 players · open squad to sync from Firestore' : '${s.length} player(s)',
+      loading: () => 'Loading squad…',
+      orElse: () => '…',
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final profileAsync = ref.watch(userProfileProvider);
@@ -72,7 +93,7 @@ class HomeScreen extends ConsumerWidget {
                   _buildMenuButton(
                     icon: Icons.groups_outlined,
                     title: 'MY SQUAD',
-                    subtitle: '11 Active Players',
+                    subtitle: _squadSubtitle(ref),
                     showChevron: true,
                     onTap: () => context.go('/squad'),
                   ),
@@ -82,7 +103,7 @@ class HomeScreen extends ConsumerWidget {
                     title: 'TRAINING',
                     subtitle: 'Improve Skills',
                     newBadge: true,
-                    onTap: () => showTrainingPlayerPicker(context),
+                    onTap: () => showTrainingPlayerPicker(context, ref),
                   ),
                   const SizedBox(height: 12),
                   _buildMenuButton(
@@ -97,7 +118,7 @@ class HomeScreen extends ConsumerWidget {
                     onTap: () => context.go('/leaderboard'),
                   ),
                   const SizedBox(height: 12),
-                  _buildDailyRewardCard(context),
+                  _buildDailyRewardCard(context, ref),
                 ],
               ),
             ),
@@ -327,7 +348,15 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildDailyRewardCard(BuildContext context) {
+  Widget _buildDailyRewardCard(BuildContext context, WidgetRef ref) {
+    final subtitle = ref.watch(userProfileProvider).maybeWhen(
+          data: (p) {
+            if (p == null) return 'Sign in';
+            if (_canClaimDaily(p)) return 'Tap to claim coins';
+            return 'Next reward tomorrow';
+          },
+          orElse: () => '…',
+        );
     return DottedBorder(
       color: GameColors.neon,
       strokeWidth: 1.8,
@@ -337,7 +366,7 @@ class HomeScreen extends ConsumerWidget {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(17),
         child: ElevatedButton(
-          onPressed: () => showDailyRewardDialog(context),
+          onPressed: () => showDailyRewardDialog(context, ref),
           style: ElevatedButton.styleFrom(
             backgroundColor: GameColors.card,
             foregroundColor: Colors.white,
@@ -364,7 +393,7 @@ class HomeScreen extends ConsumerWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Available Now',
+                      subtitle,
                       style: TextStyle(
                         color: GameColors.neon,
                         fontSize: 13,

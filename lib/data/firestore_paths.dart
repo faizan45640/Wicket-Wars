@@ -30,4 +30,9 @@ abstract final class FirestorePaths {
   static const String leaderboard = 'leaderboard';
 
   static String leaderboardEntryDocument(String uid) => '$leaderboard/$uid';
+
+  /// Read-only catalog of premium / licensed templates (seed in Console or admin tools).
+  static const String playersCatalog = 'players_catalog';
+
+  static String playersCatalogDocument(String catalogId) => '$playersCatalog/$catalogId';
 }

@@ -1,22 +1,27 @@
 import 'dart:async';
 
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
-/// Drives [GoRouter] redirects when the Firebase session changes.
+import '../data/models/app_user.dart';
+import '../data/repositories/auth_repository.dart';
+
+/// Drives [GoRouter] redirects when the auth session changes.
 final goRouterAuthRefresh = GoRouterAuthRefresh();
 
 final class GoRouterAuthRefresh extends ChangeNotifier {
-  StreamSubscription<User?>? _sub;
+  StreamSubscription<AppUser?>? _sub;
+  AuthRepository? _authRepository;
 
-  /// Call once after [Firebase.initializeApp].
-  void listenToAuth() {
-    _sub ??= FirebaseAuth.instance.authStateChanges().listen((_) {
+  void listenToAuth(AuthRepository authRepository) {
+    if (identical(_authRepository, authRepository) && _sub != null) return;
+    _sub?.cancel();
+    _authRepository = authRepository;
+    _sub = authRepository.watchAuthState().listen((_) {
       notifyListeners();
     });
   }
 
-  bool get isSignedIn => FirebaseAuth.instance.currentUser != null;
+  bool get isSignedIn => _authRepository?.currentUser != null;
 
   @override
   void dispose() {

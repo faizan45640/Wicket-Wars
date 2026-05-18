@@ -1,41 +1,55 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 
 import '../data/models/cricket_player.dart';
 import '../data/models/player_attributes.dart';
 import '../data/models/training_state.dart';
+import '../data/models/user_profile.dart';
+import '../data/providers.dart';
 import '../theme/game_colors.dart';
 import '../widgets/game_bottom_nav.dart';
 
-// Hardcoded economy / training (replace with backend later).
 const Duration kTrainingDuration = Duration(seconds: 45);
-const int kInitialCoins = 1500;
 const int kUpgradeCoinCost = 100;
 const int kUpgradeStatBoost = 2;
 const int kTrainingStatGain = 1;
 
 /// Full-screen player view: summary, scrollable stats, train (timed), upgrade (coins).
-class PlayerDetailScreen extends StatefulWidget {
+/// Coins and player updates persist to Firestore via [userRepositoryProvider] /
+/// [squadRepositoryProvider].
+class PlayerDetailScreen extends ConsumerStatefulWidget {
   const PlayerDetailScreen({super.key, required this.player});
 
   final CricketPlayer player;
 
   @override
-  State<PlayerDetailScreen> createState() => _PlayerDetailScreenState();
+  ConsumerState<PlayerDetailScreen> createState() => _PlayerDetailScreenState();
 }
 
-class _PlayerDetailScreenState extends State<PlayerDetailScreen> {
+class _PlayerDetailScreenState extends ConsumerState<PlayerDetailScreen> {
+  static final NumberFormat _coinFmt = NumberFormat.decimalPattern('en_US');
+
   late CricketPlayer _player;
-  int _coins = kInitialCoins;
   Timer? _ticker;
 
   @override
   void initState() {
     super.initState();
     _player = widget.player;
-    if (_player.isTraining) {
+    if (!_player.canTrainAndUpgrade && _player.training != null) {
+      _player = _player.copyWith(clearTraining: true);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final uid = ref.read(currentUidProvider);
+        if (uid != null) {
+          unawaited(ref.read(squadRepositoryProvider).upsertPlayer(uid, _player));
+        }
+      });
+    } else if (_player.isTraining) {
       _armTrainingTicker();
     }
   }
@@ -62,23 +76,36 @@ class _PlayerDetailScreenState extends State<PlayerDetailScreen> {
     });
   }
 
-  void _onTrainingComplete() {
+  Future<void> _onTrainingComplete() async {
+    if (!_player.canTrainAndUpgrade) return;
     _ticker?.cancel();
     _ticker = null;
+    final uid = ref.read(currentUidProvider);
     final a = _player.attributes;
+    final updatedPlayer = _player.copyWith(
+      clearTraining: true,
+      attributes: a.copyWith(
+        batting: a.batting + kTrainingStatGain,
+        bowling: a.bowling + kTrainingStatGain,
+        fielding: a.fielding + kTrainingStatGain,
+        stamina: a.stamina + kTrainingStatGain,
+        consistency: a.consistency + kTrainingStatGain,
+      ),
+    );
     if (!mounted) return;
-    setState(() {
-      _player = _player.copyWith(
-        clearTraining: true,
-        attributes: a.copyWith(
-          batting: a.batting + kTrainingStatGain,
-          bowling: a.bowling + kTrainingStatGain,
-          fielding: a.fielding + kTrainingStatGain,
-          stamina: a.stamina + kTrainingStatGain,
-          consistency: a.consistency + kTrainingStatGain,
-        ),
-      );
-    });
+    setState(() => _player = updatedPlayer);
+    if (uid != null) {
+      try {
+        await ref.read(squadRepositoryProvider).upsertPlayer(uid, updatedPlayer);
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not save training results: $e')),
+          );
+        }
+        return;
+      }
+    }
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -88,25 +115,74 @@ class _PlayerDetailScreenState extends State<PlayerDetailScreen> {
     );
   }
 
-  void _startTraining() {
-    if (_player.isTraining) return;
-    final now = DateTime.now();
-    setState(() {
-      _player = _player.copyWith(
-        training: TrainingState(
-          startedAt: now,
-          completesAt: now.add(kTrainingDuration),
+  Future<void> _startTraining() async {
+    if (!_player.canTrainAndUpgrade) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Premium and licensed cards have fixed stats — only free custom players can train.',
+          ),
         ),
       );
-    });
+      return;
+    }
+    if (_player.isTraining) return;
+    final uid = ref.read(currentUidProvider);
+    if (uid == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Sign in to train players.')),
+      );
+      return;
+    }
+    final now = DateTime.now();
+    final next = _player.copyWith(
+      training: TrainingState(
+        startedAt: now,
+        completesAt: now.add(kTrainingDuration),
+      ),
+    );
+    setState(() => _player = next);
+    try {
+      await ref.read(squadRepositoryProvider).upsertPlayer(uid, next);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _player = _player.copyWith(clearTraining: true));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not start training: $e')),
+        );
+      }
+      return;
+    }
     _armTrainingTicker();
   }
 
-  void _upgradeInstant() {
-    if (_coins < kUpgradeCoinCost) {
+  Future<void> _upgradeInstant() async {
+    if (!_player.canTrainAndUpgrade) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Coin upgrades apply only to free custom players.'),
+        ),
+      );
+      return;
+    }
+    final uid = ref.read(currentUidProvider);
+    if (uid == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Sign in to upgrade players.')),
+      );
+      return;
+    }
+    final profile = ref.read(userProfileProvider).valueOrNull;
+    if (profile == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Profile still loading…')),
+      );
+      return;
+    }
+    if (profile.coins < kUpgradeCoinCost) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Not enough coins (need $kUpgradeCoinCost)'),
+          content: Text('Not enough coins (need ${_coinFmt.format(kUpgradeCoinCost)})'),
           backgroundColor: GameColors.card,
           behavior: SnackBarBehavior.floating,
         ),
@@ -115,10 +191,21 @@ class _PlayerDetailScreenState extends State<PlayerDetailScreen> {
     }
     final a = _player.attributes;
     final boosted = _boostWeakest(a, kUpgradeStatBoost);
-    setState(() {
-      _coins -= kUpgradeCoinCost;
-      _player = _player.copyWith(attributes: boosted);
-    });
+    final updatedPlayer = _player.copyWith(attributes: boosted);
+    final updatedProfile = profile.copyWith(coins: profile.coins - kUpgradeCoinCost);
+    try {
+      await ref.read(userRepositoryProvider).upsertProfile(updatedProfile);
+      await ref.read(squadRepositoryProvider).upsertPlayer(uid, updatedPlayer);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not apply upgrade: $e')),
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _player = updatedPlayer);
   }
 
   static PlayerAttributes _boostWeakest(PlayerAttributes a, int by) {
@@ -160,6 +247,9 @@ class _PlayerDetailScreenState extends State<PlayerDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final profileAsync = ref.watch(userProfileProvider);
+    final coins = profileAsync.valueOrNull?.coins;
+
     final a = _player.attributes;
     final ovr = a.overall;
     return Scaffold(
@@ -209,17 +299,36 @@ class _PlayerDetailScreenState extends State<PlayerDetailScreen> {
               children: [
                 const Icon(Icons.monetization_on, color: Colors.amber, size: 20),
                 const SizedBox(width: 8),
-                Text(
-                  'Coins: $_coins',
-                  style: TextStyle(
-                    color: GameColors.muted.withValues(alpha: 0.95),
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
+                Expanded(
+                  child: profileAsync.when(
+                    data: (UserProfile? p) {
+                      final c = p?.coins;
+                      final label = c == null ? 'Sign in for coins' : 'Coins: ${_coinFmt.format(c)}';
+                      return Text(
+                        label,
+                        style: TextStyle(
+                          color: GameColors.muted.withValues(alpha: 0.95),
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                        ),
+                      );
+                    },
+                    loading: () => Text(
+                      'Coins: …',
+                      style: TextStyle(
+                        color: GameColors.muted.withValues(alpha: 0.95),
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                      ),
+                    ),
+                    error: (e, _) => Text(
+                      'Coins: error',
+                      style: TextStyle(color: Colors.red.shade200, fontSize: 13),
+                    ),
                   ),
                 ),
-                const Spacer(),
                 Text(
-                  'Upgrade: $kUpgradeCoinCost c',
+                  'Upgrade: ${_coinFmt.format(kUpgradeCoinCost)} c',
                   style: TextStyle(
                     color: GameColors.muted.withValues(alpha: 0.7),
                     fontSize: 12,
@@ -228,6 +337,20 @@ class _PlayerDetailScreenState extends State<PlayerDetailScreen> {
               ],
             ),
           ),
+          if (!_player.canTrainAndUpgrade)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+              child: Text(
+                _player.isRealPlayer
+                    ? 'Licensed / real card — stats are fixed.'
+                    : 'Premium card — stats are fixed (not trainable).',
+                style: TextStyle(
+                  color: GameColors.muted.withValues(alpha: 0.9),
+                  fontSize: 12,
+                  height: 1.35,
+                ),
+              ),
+            ),
           const SizedBox(height: 8),
           Expanded(
             child: Padding(
@@ -270,7 +393,11 @@ class _PlayerDetailScreenState extends State<PlayerDetailScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 ElevatedButton.icon(
-                  onPressed: _player.isTraining ? null : _startTraining,
+                  onPressed: !_player.canTrainAndUpgrade
+                      ? null
+                      : _player.isTraining
+                          ? null
+                          : _startTraining,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF2E4A2E),
                     foregroundColor: const Color(0xFFE0E0E0),
@@ -285,31 +412,41 @@ class _PlayerDetailScreenState extends State<PlayerDetailScreen> {
                   ),
                   icon: Icon(
                     Icons.fitness_center_rounded,
-                    color: _player.isTraining ? GameColors.muted : GameColors.neon,
+                    color: (!_player.canTrainAndUpgrade || _player.isTraining)
+                        ? GameColors.muted
+                        : GameColors.neon,
                     size: 22,
                   ),
                   label: Text(
-                    _player.isTraining
-                        ? 'TRAINING… ${_trainCountdown()}'
-                        : 'TRAIN PLAYER  (${kTrainingDuration.inSeconds}s)',
+                    !_player.canTrainAndUpgrade
+                        ? 'TRAIN (locked)'
+                        : _player.isTraining
+                            ? 'TRAINING… ${_trainCountdown()}'
+                            : 'TRAIN PLAYER  (${kTrainingDuration.inSeconds}s)',
                     textAlign: TextAlign.center,
                     style: const TextStyle(fontWeight: FontWeight.w800, letterSpacing: 0.4),
                   ),
                 ),
                 const SizedBox(height: 10),
                 ElevatedButton.icon(
-                  onPressed: _upgradeInstant,
+                  onPressed: (coins != null &&
+                          coins >= kUpgradeCoinCost &&
+                          _player.canTrainAndUpgrade)
+                      ? _upgradeInstant
+                      : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: GameColors.neon,
                     foregroundColor: GameColors.onNeonButton,
+                    disabledBackgroundColor: GameColors.muted.withValues(alpha: 0.25),
+                    disabledForegroundColor: GameColors.muted,
                     elevation: 0,
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                   ),
                   icon: const Icon(Icons.trending_up_rounded, size: 24),
-                  label: const Text(
-                    'UPGRADE +',
-                    style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.5),
+                  label: Text(
+                    _player.canTrainAndUpgrade ? 'UPGRADE +' : 'UPGRADE (locked)',
+                    style: const TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.5),
                   ),
                 ),
               ],
@@ -364,44 +501,44 @@ class _SummaryCard extends StatelessWidget {
       elevation: 0,
       shadowColor: GameColors.neon.withValues(alpha: 0.06),
       child: Padding(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Container(
-            width: 72,
-            height: 72,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: GameColors.neon.withValues(alpha: 0.6), width: 2),
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: GameColors.neon.withValues(alpha: 0.6), width: 2),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: path.isNotEmpty
+                  ? Image.asset(
+                      path,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => _LetterAvatar(initial: initial),
+                    )
+                  : _LetterAvatar(initial: initial),
             ),
-            clipBehavior: Clip.antiAlias,
-            child: path.isNotEmpty
-                ? Image.asset(
-                    path,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => _LetterAvatar(initial: initial),
-                  )
-                : _LetterAvatar(initial: initial),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Text(
-              name,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Color(0xFFF0F0F0),
-                fontSize: 20,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 0.2,
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text(
+                name,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Color(0xFFF0F0F0),
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.2,
+                ),
               ),
             ),
-          ),
-          const SizedBox(width: 10),
-          _OvrStarburst(ovr: ovr),
-        ],
-      ),
+            const SizedBox(width: 10),
+            _OvrStarburst(ovr: ovr),
+          ],
+        ),
       ),
     );
   }

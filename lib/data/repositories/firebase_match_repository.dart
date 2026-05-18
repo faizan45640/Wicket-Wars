@@ -72,4 +72,24 @@ class FirebaseMatchRepository implements MatchRepository {
   Future<void> saveRoom(MatchRoom room) async {
     await _db.matchRoomDocument(room.roomId).set(room.toMap(), SetOptions(merge: true));
   }
+
+  @override
+  Future<MatchRoom?> transactRoom(
+    String roomId,
+    MatchRoom? Function(MatchRoom current) update,
+  ) async {
+    if (roomId.isEmpty) return null;
+    return _db.runTransaction<MatchRoom?>((transaction) async {
+      final ref = _db.matchRoomDocument(roomId);
+      final snap = await transaction.get(ref);
+      if (!snap.exists) return null;
+      final data = snap.data();
+      if (data == null) return null;
+      final current = MatchRoom.fromMap(decodeFirestoreMap(data));
+      final next = update(current);
+      if (next == null) return null;
+      transaction.set(ref, next.toMap(), SetOptions(merge: true));
+      return next;
+    });
+  }
 }

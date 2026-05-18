@@ -72,17 +72,3 @@ abstract final class HardcodedLiveMatch {
     (score: 34, details: '2-34 No.3 4 (b Bowler B)'),
   ];
 }
-
-/// Converts total legal balls → "overs.balls" string (8.3 means 8 overs and 3 balls).
-String formatOversFromBalls(int totalBalls) {
-  if (totalBalls <= 0) return '0.0';
-  final o = totalBalls ~/ 6; // ~/ is integer division
-  final b = totalBalls % 6;
-  return '$o.$b';
-}
-
-/// Strike rate: runs per 100 balls, standard cricket stat.
-String formatSR(int runs, int balls) {
-  if (balls == 0) return '0.0';
-  return ((runs / balls) * 100).toStringAsFixed(1);
-}

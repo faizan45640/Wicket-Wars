@@ -1,7 +1,7 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import 'data/models/match_result_args.dart';
 import 'auth/go_router_auth_refresh.dart';
 import 'theme/game_colors.dart';
 import 'screens/home_screen.dart';
@@ -20,7 +20,7 @@ final GoRouter appRouter = GoRouter(
   initialLocation: '/',
   refreshListenable: goRouterAuthRefresh,
   redirect: (BuildContext context, GoRouterState state) {
-    final loggedIn = FirebaseAuth.instance.currentUser != null;
+    final loggedIn = goRouterAuthRefresh.isSignedIn;
     final path = state.matchedLocation;
     final authRoute = path == '/login' || path == '/signup';
     if (!loggedIn && !authRoute) {
@@ -72,13 +72,22 @@ final GoRouter appRouter = GoRouter(
             appBar: AppBar(
               backgroundColor: GameColors.bg,
               leading: IconButton(
-                icon: const Icon(Icons.arrow_back_ios_new_rounded, color: GameColors.neon),
+                icon: const Icon(
+                  Icons.arrow_back_ios_new_rounded,
+                  color: GameColors.neon,
+                ),
                 onPressed: () => context.pop(),
               ),
-              title: const Text('Player', style: TextStyle(color: Colors.white)),
+              title: const Text(
+                'Player',
+                style: TextStyle(color: Colors.white),
+              ),
             ),
             body: const Center(
-              child: Text('Player not found', style: TextStyle(color: Colors.white70)),
+              child: Text(
+                'Player not found',
+                style: TextStyle(color: Colors.white70),
+              ),
             ),
           );
         }
@@ -104,15 +113,16 @@ final GoRouter appRouter = GoRouter(
       },
     ),
     GoRoute(
-      path: '/match/live',
+      path: '/match/live/:roomId',
       builder: (BuildContext context, GoRouterState state) {
-        return const LiveMatchScreen();
+        final id = state.pathParameters['roomId'] ?? '';
+        return LiveMatchScreen(roomId: id);
       },
     ),
     GoRoute(
       path: '/match/result',
       builder: (BuildContext context, GoRouterState state) {
-        return const MatchResultScreen();
+        return MatchResultScreen(args: state.extra as MatchResultArgs?);
       },
     ),
   ],

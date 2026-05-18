@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../data/models/cricket_player.dart';
 import '../data/models/player_attributes.dart';
+import '../data/models/player_tier.dart';
 import '../theme/game_colors.dart';
 import 'player_card_image.dart';
 
@@ -161,12 +162,24 @@ class _FifaCardDialog extends StatelessWidget {
                                       ),
                                       const SizedBox(height: 6),
                                       Text(
-                                        player.isRealPlayer ? 'VERIFIED' : 'CUSTOM',
+                                        player.isRealPlayer
+                                            ? 'VERIFIED'
+                                            : 'CUSTOM',
                                         style: const TextStyle(
                                           color: _textSecondary,
                                           fontSize: 12,
                                           fontWeight: FontWeight.w600,
                                           letterSpacing: 0.8,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        player.playerTier == PlayerTier.premium ? 'PREMIUM' : 'FREE',
+                                        style: TextStyle(
+                                          color: _textMuted.withValues(alpha: 0.95),
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w700,
+                                          letterSpacing: 0.6,
                                         ),
                                       ),
                                       const SizedBox(height: 20),

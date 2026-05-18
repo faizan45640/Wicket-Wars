@@ -1,704 +1,473 @@
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../data/placeholder/hardcoded_live_match_data.dart';
+import '../data/cricket_format.dart';
+import '../data/match_delivery_engine.dart';
+import '../data/models/innings_result.dart';
+import '../data/models/match_result_args.dart';
+import '../data/models/match_room.dart';
+import '../data/models/match_summary.dart';
+import '../data/providers.dart';
+import '../data/repositories/squad_repository.dart';
 import '../theme/game_colors.dart';
 import '../widgets/game_bottom_nav.dart';
 
-// --- Live match screen (educational notes) ---------------------------------
-// • All "truth" for names/scorecard rows lives in [hardcoded_live_match_data.dart].
-//   This file is UI + a tiny bit of mutable state for the demo "simulate" button.
-// • Layout: one vertical [Column], then [Expanded] + [ListView]. That pattern is
-//   important: if you put [ListView] directly in [Column] without [Expanded],
-//   you get unbounded-height errors, because [Column] tries to shrink-wrap its
-//   children but [ListView] wants infinite height. [Expanded] gives the list a
-//   bounded height (everything below the app bar / nav strip).
-// • [formatOversFromBalls] & [formatSR] are defined in the data file: cricket
-//   overs are stored as *legal ball count* (e.g. 51 balls → 8.3 overs).
-// ---------------------------------------------------------------------------
+/// T20 match: sequential innings, Firestore-backed state; each delivery uses [applyOneDelivery] inside [MatchRepository.transactRoom] on Firebase.
+class LiveMatchScreen extends ConsumerStatefulWidget {
+  const LiveMatchScreen({super.key, required this.roomId});
 
-/// In-play match: live line, scrollable scorecard, simulate next ball (demo data + light randomness).
-class LiveMatchScreen extends StatefulWidget {
-  const LiveMatchScreen({super.key});
+  final String roomId;
 
   @override
-  State<LiveMatchScreen> createState() => _LiveMatchScreenState();
+  ConsumerState<LiveMatchScreen> createState() => _LiveMatchScreenState();
 }
 
-class _LiveMatchScreenState extends State<LiveMatchScreen> {
-  // --- Simulated match state (not persisted; resets when you leave the screen) ---
-  late int _runs;
-  late int _wickets;
-  /// Total *legal* balls bowled this innings. Overs Text uses [formatOversFromBalls].
-  late int _balls;
-  /// Grows as the user taps "simulate". Kept in state so the feed is interactive.
-  late List<String> _commentary;
-  // Commentary "view window": we show [_windowLen] lines at a time from [_commentary].
-  // [_window] is the start index. Arrows change this index (like scrolling without
-  // nesting a second scroll view inside the main [ListView]).
-  int _window = 0;
-  /// Index into the static [HardcodedLiveMatch.nextBallQuips] list.
-  int _quip = 0;
+class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen> {
   final _rand = Random();
+  var _finishing = false;
+  var _busyBall = false;
+  var _bootstrapping = false;
 
-  static const int _windowLen = 4;
+  Future<void> _bootstrapIfNeeded(MatchRoom room) async {
+    if (_bootstrapping) return;
+    if (room.status == MatchRoomStatus.completed) return;
+    if (room.guestUid == null || room.guestUid!.isEmpty) return;
 
-  @override
-  void initState() {
-    super.initState();
-    _runs = HardcodedLiveMatch.initialTotalRuns;
-    _wickets = HardcodedLiveMatch.initialWickets;
-    _balls = HardcodedLiveMatch.initialBalls;
-    // [List<String>.from] copies the const list so we can [add] without mutating the original.
-    _commentary = List<String>.from(HardcodedLiveMatch.initialCommentary);
+    _bootstrapping = true;
+    try {
+      final repo = ref.read(matchRepositoryProvider);
+      var r = await repo.getRoom(room.roomId);
+      if (!mounted || r == null) return;
+
+      final squadRepo = ref.read(squadRepositoryProvider);
+      final hostXi = await _pickXi(squadRepo, r.hostUid);
+      final guestXi = await _pickXi(squadRepo, r.guestUid);
+
+      var changed = false;
+      if (!r.hostXiLocked || r.hostPlayingXi.isEmpty) {
+        r = r.copyWith(hostPlayingXi: hostXi, hostXiLocked: true);
+        changed = true;
+      }
+      if (!r.guestXiLocked || r.guestPlayingXi.isEmpty) {
+        r = r.copyWith(guestPlayingXi: guestXi, guestXiLocked: true);
+        changed = true;
+      }
+      if (r.status == MatchRoomStatus.waitingGuest ||
+          r.status == MatchRoomStatus.selectingXi) {
+        r = r.copyWith(status: MatchRoomStatus.inProgress);
+        changed = true;
+      }
+      if (r.hostBatFirst == null) {
+        final batFirst = _rand.nextBool();
+        final startMsg =
+            'Toss — ${batFirst ? 'Host' : 'Guest'} bats first. T20: 20 overs max per innings. Tap “Next delivery”.';
+        var tail = [...r.commentaryTail, startMsg];
+        if (tail.length > 30) tail = tail.sublist(tail.length - 30);
+        r = r.copyWith(
+          hostBatFirst: batFirst,
+          inningsNumber: 1,
+          chaseTarget: null,
+          hostRuns: 0,
+          guestRuns: 0,
+          hostWickets: 0,
+          guestWickets: 0,
+          hostLegalBalls: 0,
+          guestLegalBalls: 0,
+          commentaryTail: tail,
+        );
+        changed = true;
+      }
+      if (changed) await repo.saveRoom(r);
+    } finally {
+      if (mounted) _bootstrapping = false;
+    }
   }
 
-  /// Max start index for the commentary window: last window that still fits 4 lines.
-  int get _maxWindow {
-    if (_commentary.isEmpty) return 0;
-    return (_commentary.length - _windowLen).clamp(0, 999);
+  Future<List<String>> _pickXi(SquadRepository squadRepo, String? uid) async {
+    if (uid == null || uid.isEmpty) return [];
+    final list = await squadRepo.getSquad(uid);
+    final sorted = [...list]..sort((a, b) => b.attributes.overall.compareTo(a.attributes.overall));
+    return sorted.take(11).map((p) => p.id).toList();
   }
 
-  void _bumpWindow(int delta) {
-    setState(() {
-      _window = (_window + delta).clamp(0, _maxWindow);
-    });
-  }
+  Future<void> _nextDelivery() async {
+    if (_busyBall || _finishing) return;
+    final repo = ref.read(matchRepositoryProvider);
+    var room = await repo.getRoom(widget.roomId);
+    if (!mounted || room == null || room.status == MatchRoomStatus.completed) return;
+    if (room.hostBatFirst == null) {
+      await _bootstrapIfNeeded(room);
+      room = await repo.getRoom(widget.roomId);
+      if (!mounted || room == null || room.hostBatFirst == null) return;
+    }
 
-  void _simulate() {
-    if (_quip >= HardcodedLiveMatch.nextBallQuips.length) {
-      // [mounted] = this [State] is still in the tree. Never use [BuildContext] after
-      // async gaps without checking, or you can crash. Here it's sync but good habit.
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('End of mock sequence — build the engine to continue.'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+    final strikerAtCall = battingIsHost(room);
+    final br = strikerAtCall ? room.hostRuns : room.guestRuns;
+    if (room.inningsNumber == 2 &&
+        room.chaseTarget != null &&
+        br >= room.chaseTarget!) {
+      await _tryFinalize(room);
       return;
     }
-    setState(() {
-      _balls += 1;
-      // Demi weighted random runs: more 0/1/4 than 6. Duplicates in the list = higher weight.
-      final out = [0, 0, 1, 1, 2, 3, 4, 4, 4, 6];
-      _runs += out[_rand.nextInt(out.length)];
-      if (_rand.nextDouble() < 0.08 && _wickets < 9) {
-        _wickets += 1;
+
+    _busyBall = true;
+    try {
+      final after = await repo.transactRoom(widget.roomId, (current) {
+        return applyOneDelivery(current, _rand);
+      });
+      if (!mounted || after == null) return;
+
+      if (after.inningsNumber == 2 &&
+          shouldAutoCompleteMatchAfterDelivery(
+            after,
+            strikerWasHost: battingIsHost(after),
+          )) {
+        await _tryFinalize(after);
       }
-      _commentary.add(
-        "Ball ${formatOversFromBalls(_balls)}: ${HardcodedLiveMatch.nextBallQuips[_quip]}",
+    } finally {
+      if (mounted) _busyBall = false;
+    }
+  }
+
+  Future<void> _tryFinalize(MatchRoom room) async {
+    if (room.status == MatchRoomStatus.completed) return;
+    await _completeMatch(room);
+  }
+
+  Future<void> _completeMatch(MatchRoom room) async {
+    final uid = ref.read(currentUidProvider);
+    if (uid == null || !mounted) return;
+
+    setState(() => _finishing = true);
+    try {
+      final userRepo = ref.read(userRepositoryProvider);
+      final oppUid =
+          room.hostUid == uid ? room.guestUid : room.hostUid;
+      var oppName = 'Practice opponent';
+      if (oppUid != null && oppUid.isNotEmpty) {
+        final oppProfile = await userRepo.getProfile(oppUid);
+        oppName = oppProfile?.displayName ?? 'Opponent';
+      }
+
+      final profile = await userRepo.getProfile(uid);
+      final yourName = profile?.displayName ?? 'You';
+
+      final hUid = room.hostUid;
+      final gUid = room.guestUid;
+      final hostName =
+          hUid != null ? (await userRepo.getProfile(hUid))?.displayName ?? 'Host' : 'Host';
+      final guestName =
+          gUid != null ? (await userRepo.getProfile(gUid))?.displayName ?? 'Guest' : 'Guest';
+
+      final youHost = room.hostUid == uid;
+      final myRuns = youHost ? room.hostRuns : room.guestRuns;
+      final oppRuns = youHost ? room.guestRuns : room.hostRuns;
+
+      final won = myRuns > oppRuns;
+      final tie = myRuns == oppRuns;
+      final coins = tie
+          ? 35 + (myRuns ~/ 3)
+          : 40 + (won ? 90 : 15) + (myRuns ~/ 3);
+      final xp = tie ? 18 : (won ? 30 : 12);
+
+      final hostBatFirst = room.hostBatFirst ?? true;
+      final firstName = hostBatFirst ? hostName : guestName;
+      final secondName = hostBatFirst ? guestName : hostName;
+      final firstRuns = hostBatFirst ? room.hostRuns : room.guestRuns;
+      final firstWkts = hostBatFirst ? room.hostWickets : room.guestWickets;
+      final firstBalls = hostBatFirst ? room.hostLegalBalls : room.guestLegalBalls;
+      final secondRuns = hostBatFirst ? room.guestRuns : room.hostRuns;
+      final secondWkts = hostBatFirst ? room.guestWickets : room.hostWickets;
+      final secondBalls = hostBatFirst ? room.guestLegalBalls : room.hostLegalBalls;
+
+      final innings1 = InningsResult(
+        teamName: firstName,
+        runs: firstRuns,
+        wicketsDown: firstWkts,
+        legalBallsFaced: firstBalls.clamp(1, 120),
+        battedFirst: true,
       );
-      _quip++;
-      // After a new line, jump the window to the latest lines so the user sees the update.
-      _window = _maxWindow;
-    });
+      final innings2 = InningsResult(
+        teamName: secondName,
+        runs: secondRuns,
+        wicketsDown: secondWkts,
+        legalBallsFaced: secondBalls.clamp(1, 120),
+        battedFirst: false,
+      );
+
+      final headline = tie
+          ? 'MATCH TIED — $myRuns runs each'
+          : (won ? '$yourName WINS' : '$oppName WINS');
+
+      await ref.read(matchHistoryRepositoryProvider).append(
+            uid,
+            MatchSummary(
+              matchId: '${room.roomId}_${DateTime.now().millisecondsSinceEpoch}',
+              completedAt: DateTime.now(),
+              opponentDisplayName: oppName,
+              won: won && !tie,
+              runsFor: myRuns,
+              runsAgainst: oppRuns,
+              coinsEarned: coins,
+              xpEarned: xp,
+            ),
+          );
+
+      if (profile != null) {
+        await userRepo.upsertProfile(
+          profile.copyWith(
+            wins: profile.wins + (won && !tie ? 1 : 0),
+            losses: profile.losses + (!won && !tie ? 1 : 0),
+            matchesPlayed: profile.matchesPlayed + 1,
+            coins: profile.coins + coins,
+            rankingPoints: profile.rankingPoints + xp,
+            totalRunsScored: profile.totalRunsScored + myRuns,
+          ),
+        );
+      }
+
+      await ref.read(matchRepositoryProvider).saveRoom(
+            room.copyWith(
+              status: MatchRoomStatus.completed,
+              completedAt: DateTime.now(),
+            ),
+          );
+
+      if (!mounted) return;
+      final args = MatchResultArgs(
+        youWon: won && !tie,
+        innings1: innings1,
+        innings2: innings2,
+        headline: headline,
+        coinsEarned: coins,
+        xpEarned: xp,
+      );
+      context.pushReplacement('/match/result', extra: args);
+    } finally {
+      if (mounted) setState(() => _finishing = false);
+    }
+  }
+
+  Future<void> _forceEndAndSave() async {
+    final repo = ref.read(matchRepositoryProvider);
+    final room = await repo.getRoom(widget.roomId);
+    if (!mounted || room == null || room.status == MatchRoomStatus.completed) return;
+    await _completeMatch(room);
   }
 
   @override
   Widget build(BuildContext context) {
-    // Derived value: same [_balls] integer drives both header and commentary strings.
-    final overs = formatOversFromBalls(_balls);
+    final uid = ref.watch(currentUidProvider);
+    final roomAsync = ref.watch(matchRoomProvider(widget.roomId));
+
     return Scaffold(
       backgroundColor: GameColors.bg,
       appBar: AppBar(
         backgroundColor: GameColors.bg,
-        elevation: 0,
-        scrolledUnderElevation: 0,
+        title: const Text(
+          'LIVE MATCH',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w800,
+            fontSize: 15,
+          ),
+        ),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: GameColors.neon, size: 20),
-          onPressed: () {
-            if (context.canPop()) {
-              context.pop();
-            } else {
-              context.go('/');
-            }
-          },
+          icon: const Icon(Icons.close_rounded, color: GameColors.neon),
+          onPressed: () => context.go('/'),
         ),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '${HardcodedLiveMatch.teamUser}  vs  ${HardcodedLiveMatch.teamOpp}',
-              style: const TextStyle(
-                color: Color(0xFFEEEEEE),
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            Text(
-              '$_runs / $_wickets',
-              style: TextStyle(
-                color: GameColors.neon,
-                fontSize: 16,
-                fontWeight: FontWeight.w900,
-                height: 1.2,
-              ),
-            ),
-          ],
+      ),
+      body: roomAsync.when(
+        loading: () => const Center(
+          child: CircularProgressIndicator(color: GameColors.neon),
         ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.end,
+        error: (e, _) => Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text('Could not load room: $e', style: TextStyle(color: Colors.red.shade200)),
+          ),
+        ),
+        data: (room) {
+          if (room == null) {
+            return const Center(
+              child: Text('Room not found', style: TextStyle(color: Colors.white70)),
+            );
+          }
+          if (uid == null) {
+            return const Center(
+              child: Text('Not signed in', style: TextStyle(color: Colors.white70)),
+            );
+          }
+
+          if (room.guestUid == null || room.guestUid!.isEmpty) {
+            return ListView(
+              padding: const EdgeInsets.all(20),
               children: [
                 const Text(
-                  'OVERS',
-                  style: TextStyle(color: GameColors.muted, fontSize: 9, fontWeight: FontWeight.w800),
-                ),
-                Text(
-                  '$overs / ${HardcodedLiveMatch.maxOvers}',
-                  style: TextStyle(color: GameColors.muted.withValues(alpha: 0.9), fontSize: 14, fontWeight: FontWeight.w700),
+                  'Waiting for an opponent to join this room with the code.',
+                  style: TextStyle(color: Colors.white70),
                 ),
               ],
-            ),
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-              children: [
-                _commentaryBlock(),
-                const SizedBox(height: 20),
-                _playerCardBatsman(),
-                const SizedBox(height: 12),
-                _playerCardBowler(),
-                const SizedBox(height: 20),
-                _sectionTitle('BATTING (SCORECARD)'),
-                const SizedBox(height: 8),
-                _battingTable(),
-                const SizedBox(height: 20),
-                _sectionTitle('YET TO BAT'),
-                const SizedBox(height: 8),
-                _yetToBatList(),
-                const SizedBox(height: 20),
-                _sectionTitle('BOWLING'),
-                const SizedBox(height: 8),
-                _bowlingTable(),
-                const SizedBox(height: 20),
-                _sectionTitle('FALL OF WICKETS'),
-                const SizedBox(height: 8),
-                _fowList(),
-                const SizedBox(height: 20),
-                _simulateButton(),
-                const SizedBox(height: 10),
-                OutlinedButton(
-                  onPressed: () => context.push('/match/result'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFFE0E0E0),
-                    side: BorderSide(color: GameColors.muted.withValues(alpha: 0.4)),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
+            );
+          }
+
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (room.status != MatchRoomStatus.completed) {
+              _bootstrapIfNeeded(room);
+            }
+          });
+
+          final youHost = room.hostUid == uid;
+          final hostLabel = youHost ? 'You (host)' : 'Host';
+          final guestLabel = !youHost && room.guestUid == uid
+              ? 'You (guest)'
+              : (room.guestUid != null && room.guestUid!.isNotEmpty ? 'Guest' : 'Guest (open)');
+
+          final tossed = room.hostBatFirst != null;
+          final battingHost = tossed ? battingIsHost(room) : null;
+          final phaseLabel = !tossed
+              ? 'Starting…'
+              : (room.inningsNumber == 1 ? '1st innings' : '2nd innings (chase)');
+          final chase = room.chaseTarget;
+
+          return ListView(
+            padding: const EdgeInsets.all(20),
+            children: [
+              Text(
+                'Room ${room.roomCode} · ${room.pitch.name} pitch',
+                style: TextStyle(
+                  color: GameColors.muted.withValues(alpha: 0.9),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                phaseLabel +
+                    (chase != null && room.inningsNumber == 2 ? ' · Target $chase' : ''),
+                style: const TextStyle(color: GameColors.neon, fontWeight: FontWeight.w800),
+              ),
+              if (tossed && battingHost != null)
+                Text(
+                  'Batting: ${battingHost ? hostLabel : guestLabel}',
+                  style: TextStyle(color: GameColors.muted.withValues(alpha: 0.95), fontSize: 13),
+                ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: _scoreCard(
+                      '$hostLabel\n${room.hostRuns}/${room.hostWickets}\n${formatOversFromBalls(room.hostLegalBalls)}',
+                      GameColors.neon,
                     ),
                   ),
-                  child: const Text(
-                    'VIEW MATCH RESULT (demo)',
-                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _scoreCard(
+                      '$guestLabel\n${room.guestRuns}/${room.guestWickets}\n${formatOversFromBalls(room.guestLegalBalls)}',
+                      Colors.cyanAccent,
+                    ),
                   ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Host XI: ${room.hostPlayingXi.length} · Guest XI: ${room.guestPlayingXi.length} (auto top 11 by OVR)',
+                style: TextStyle(color: GameColors.muted.withValues(alpha: 0.9), fontSize: 12),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Each tap runs one legal delivery for the current innings (both players can use the same device or take turns online — Firestore keeps state).',
+                style: TextStyle(color: GameColors.muted.withValues(alpha: 0.95), fontSize: 13, height: 1.35),
+              ),
+              const SizedBox(height: 12),
+              FilledButton(
+                onPressed: _finishing ||
+                        room.status == MatchRoomStatus.completed ||
+                        !tossed ||
+                        _busyBall
+                    ? null
+                    : _nextDelivery,
+                style: FilledButton.styleFrom(
+                  backgroundColor: GameColors.neon,
+                  foregroundColor: GameColors.onNeonButton,
+                  padding: const EdgeInsets.symmetric(vertical: 18),
                 ),
-                const SizedBox(height: 12),
-                Text(
-                  'Scroll to review full card — static rows + live feed above update when you tap simulate.',
-                  style: TextStyle(
-                    color: GameColors.muted.withValues(alpha: 0.75),
-                    fontSize: 11,
-                    height: 1.35,
-                  ),
+                child: _busyBall
+                    ? const SizedBox(
+                        height: 22,
+                        width: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: GameColors.onNeonButton),
+                      )
+                    : const Text(
+                        'NEXT DELIVERY',
+                        style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+                      ),
+              ),
+              const SizedBox(height: 12),
+              FilledButton(
+                onPressed: _finishing || room.status == MatchRoomStatus.completed
+                    ? null
+                    : _forceEndAndSave,
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF4A2C2C),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
-              ],
-            ),
-          ),
-        ],
-      ),
-      // [lockNavigation: true] — see [GameBottomNav]: tabs show a snackbar instead of routing,
-      // so the user must use back (or you later add "end match" that calls [go]).
-      bottomNavigationBar: const GameBottomNav(
-        selectedIndex: 2,
-        lockNavigation: true,
-      ),
-    );
-  }
-
-  Widget _commentaryBlock() {
-    final lines = _commentary;
-    final start = _window.clamp(0, _maxWindow);
-    final end = (start + _windowLen).clamp(0, lines.length);
-    // [sublist] is a cheap "view" into the list — no copy of all strings.
-    final view = lines.sublist(start, end);
-
-    return Card(
-      color: GameColors.card,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: const BorderSide(color: GameColors.cardBorder),
-      ),
-      elevation: 0,
-      child: Padding(
-      padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+                child: _finishing
+                    ? const SizedBox(
+                        height: 22,
+                        width: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Text('END MATCH NOW (current scores)'),
+              ),
+              if (room.commentaryTail.isNotEmpty) ...[
+                const SizedBox(height: 24),
                 const Text(
                   'COMMENTARY',
                   style: TextStyle(
                     color: GameColors.muted,
-                    fontSize: 9,
+                    fontSize: 11,
                     fontWeight: FontWeight.w800,
-                    letterSpacing: 0.6,
                   ),
                 ),
                 const SizedBox(height: 8),
-                for (var i = 0; i < view.length; i++) ...[
-                  if (i > 0) const SizedBox(height: 8),
-                  Text(
-                    view[i],
-                    style: const TextStyle(
-                      color: Color(0xFFE4E4E4),
-                      fontSize: 13,
-                      height: 1.4,
+                ...room.commentaryTail.reversed.take(10).map(
+                      (line) => Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Text(line, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                      ),
                     ),
-                  ),
-                ],
               ],
-            ),
-          ),
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              IconButton(
-                onPressed: _window <= 0 ? null : () => _bumpWindow(-1),
-                icon: const Icon(Icons.keyboard_arrow_up_rounded, color: GameColors.neon),
-                visualDensity: VisualDensity.compact,
-              ),
-              IconButton(
-                onPressed: _window >= _maxWindow ? null : () => _bumpWindow(1),
-                icon: const Icon(Icons.keyboard_arrow_down_rounded, color: GameColors.neon),
-                visualDensity: VisualDensity.compact,
-              ),
             ],
-          ),
-        ],
-      ),
-      ),
-    );
-  }
-
-  Widget _playerCardBatsman() {
-    return _RoleCard(
-      label: 'CURRENT BATSMAN',
-      name: HardcodedLiveMatch.striker,
-      initial: 'A',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _miniLabelBar(
-            'RUNS',
-            HardcodedLiveMatch.strikerRuns,
-            80,
-            const Color(0xFF64B5F6),
-          ),
-          const SizedBox(height: 10),
-          _miniLabelBar(
-            'BALLS',
-            HardcodedLiveMatch.strikerBalls,
-            50,
-            GameColors.neon,
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'SR ${formatSR(HardcodedLiveMatch.strikerRuns, HardcodedLiveMatch.strikerBalls)}',
-            textAlign: TextAlign.end,
-            style: TextStyle(
-              color: GameColors.muted.withValues(alpha: 0.9),
-              fontSize: 12,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _playerCardBowler() {
-    return _RoleCard(
-      label: 'CURRENT BOWLER',
-      name: HardcodedLiveMatch.currentBowler,
-      initial: 'B',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // 51 balls = 8.3 overs; "-0-45-2" = maidens, runs, wickets in classic line (demo).
-          Text(
-            'SPELL  ${formatOversFromBalls(51)}-0-${HardcodedLiveMatch.bowlerSpellRuns}-${HardcodedLiveMatch.bowlerSpellWkts}   |   MATCH  ${HardcodedLiveMatch.bowlerInningsRuns} runs / ${HardcodedLiveMatch.bowlerInningsWkts} wkts',
-            style: TextStyle(
-              color: GameColors.muted.withValues(alpha: 0.9),
-              fontSize: 11,
-              height: 1.35,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'ENERGY (visual)',
-            style: TextStyle(
-              color: GameColors.muted.withValues(alpha: 0.7),
-              fontSize: 9,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 4),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(3),
-            child: LinearProgressIndicator(
-              value: 0.55,
-              minHeight: 8,
-              backgroundColor: const Color(0xFF2A2A2A),
-              valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFFFB74D)),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  static Widget _miniLabelBar(
-    String label,
-    int value,
-    int cap,
-    Color color,
-  ) {
-    // [LinearProgressIndicator.value] must be null (indeterminate) or in **0.0–1.0** — not 0–100.
-    // We fake a "form" bar: [value/cap] is the fill ratio; [cap] is a UI ceiling, not cricket truth.
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              '$label: $value',
-              style: const TextStyle(
-                color: Color(0xFFE0E0E0),
-                fontWeight: FontWeight.w800,
-                fontSize: 12,
-              ),
-            ),
-            Text(
-              '/ $cap',
-              style: TextStyle(
-                color: GameColors.muted.withValues(alpha: 0.6),
-                fontSize: 11,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 4),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(3),
-          child: LinearProgressIndicator(
-            value: (value / cap).clamp(0.0, 1.0),
-            minHeight: 6,
-            backgroundColor: const Color(0xFF2A2A2A),
-            valueColor: AlwaysStoppedAnimation<Color>(color),
-          ),
-        ),
-      ],
-    );
-  }
-
-  static Widget _sectionTitle(String t) {
-    return Text(
-      t,
-      style: const TextStyle(
-        color: Color(0xFFAAAAAA),
-        fontSize: 11,
-        fontWeight: FontWeight.w800,
-        letterSpacing: 0.8,
-      ),
-    );
-  }
-
-  Widget _battingTable() {
-    // [Table] lays out a grid: every [TableRow] must have the *same* number of cells.
-    // [columnWidths] maps column index → [TableColumnWidth]: flex vs fixed (like CSS flex vs px).
-    // [b] is a Dart 3 *record* from the data file (e.g. [BatRow] with .name, .r, .b, …).
-    return _tableCard(
-      child: Table(
-        columnWidths: const {
-          0: FlexColumnWidth(2.2),
-          1: FixedColumnWidth(32),
-          2: FixedColumnWidth(32),
-          3: FixedColumnWidth(32),
-          4: FixedColumnWidth(32),
-          5: FixedColumnWidth(44),
+          );
         },
-        children: [
-          TableRow(
-            children: _hdrCells(['BATSMAN', 'R', 'B', '4s', '6s', 'SR']),
-          ),
-          for (final b in HardcodedLiveMatch.battingOrder)
-            TableRow(
-              children: _rowCells(
-                b.name,
-                [
-                  '${b.r}',
-                  '${b.b}',
-                  '${b.fours}',
-                  '${b.sixes}',
-                  formatSR(b.r, b.b),
-                ],
-              ),
-            ),
-        ],
       ),
+      bottomNavigationBar: const GameBottomNav(selectedIndex: 2),
     );
   }
 
-  Widget _yetToBatList() {
-    return _tableCard(
-      child: Column(
-        children: [
-          for (final b in HardcodedLiveMatch.yetToBat)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Row(
-                children: [
-                  const Icon(Icons.sports_martial_arts, color: GameColors.muted, size: 16),
-                  const SizedBox(width: 8),
-                  Text(
-                    b.name,
-                    style: const TextStyle(
-                      color: Color(0xFFCCCCCC),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _bowlingTable() {
-    return _tableCard(
-      child: Table(
-        columnWidths: const {
-          0: FlexColumnWidth(2),
-          1: FixedColumnWidth(40),
-          2: FixedColumnWidth(32),
-          3: FixedColumnWidth(36),
-          4: FixedColumnWidth(32),
-        },
-        children: [
-          TableRow(
-            children: _hdrCells(['BOWLER', 'O', 'M', 'R', 'W']),
-          ),
-          for (final w in HardcodedLiveMatch.bowlingFigures)
-            TableRow(
-              children: _rowCells(
-                w.name,
-                [
-                  w.overs.toStringAsFixed(1),
-                  '${w.maidens}',
-                  '${w.runs}',
-                  '${w.wickets}',
-                ],
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _fowList() {
-    return _tableCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (final f in HardcodedLiveMatch.fallOfWickets)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Text(
-                '${f.score} — ${f.details}',
-                style: const TextStyle(
-                  color: Color(0xFFDDDDDD),
-                  fontSize: 12,
-                  height: 1.3,
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  static List<Widget> _hdrCells(List<String> labels) {
-    return labels
-        .map(
-          (s) => Padding(
-            padding: const EdgeInsets.only(bottom: 6),
-            child: Text(
-              s,
-              // Short column titles (R, B, W) look better right-aligned under numbers.
-              textAlign: s.length <= 2 ? TextAlign.end : TextAlign.start,
-              style: const TextStyle(
-                color: GameColors.muted,
-                fontSize: 9,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-        )
-        .toList();
-  }
-
-  /// One table row: first cell = name, remaining = numeric columns (all [TextAlign.end]).
-  List<Widget> _rowCells(String name, List<String> cells) {
-    return [
-      Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Text(
-          name,
-          style: const TextStyle(
-            color: Color(0xFFEEEEEE),
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ),
-      ...cells.map(
-        (c) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Text(
-            c,
-            textAlign: TextAlign.end,
-            style: const TextStyle(
-              color: Color(0xFFCCCCCC),
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-      ),
-    ];
-  }
-
-  static Widget _tableCard({required Widget child}) {
+  static Widget _scoreCard(String text, Color accent) {
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: GameColors.cardBorder),
-      ),
-      child: child,
-    );
-  }
-
-  Widget _simulateButton() {
-    return ElevatedButton.icon(
-      onPressed: _simulate,
-      style: ElevatedButton.styleFrom(
-        backgroundColor: GameColors.neon,
-        foregroundColor: GameColors.onNeonButton,
-        elevation: 0,
-        padding: const EdgeInsets.symmetric(vertical: 18),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      ),
-      icon: const Icon(Icons.sports_cricket, size: 28),
-      label: const Text(
-        'NEXT BALL / SIMULATE',
-        style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, letterSpacing: 0.2),
-      ),
-    );
-  }
-}
-
-/// Reusable "avatar + label + name + custom stats" row for batsman & bowler.
-/// [child] is the part that differs (bars vs text) — a simple *composition* pattern.
-class _RoleCard extends StatelessWidget {
-  const _RoleCard({
-    required this.label,
-    required this.name,
-    required this.initial,
-    required this.child,
-  });
-
-  final String label;
-  final String name;
-  final String initial;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      color: GameColors.card,
-      shape: RoundedRectangleBorder(
+        color: GameColors.card,
         borderRadius: BorderRadius.circular(14),
-        side: const BorderSide(color: GameColors.cardBorder),
+        border: Border.all(color: accent.withValues(alpha: 0.5)),
       ),
-      elevation: 0,
-      child: Padding(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          CircleAvatar(
-            radius: 28,
-            backgroundColor: const Color(0xFF0E0E0E),
-            child: Text(
-              initial,
-              style: const TextStyle(
-                color: GameColors.neon,
-                fontSize: 24,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: const TextStyle(
-                    color: GameColors.muted,
-                    fontSize: 9,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.6,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  name,
-                  style: const TextStyle(
-                    color: Color(0xFFFAFAFA),
-                    fontSize: 17,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                child,
-              ],
-            ),
-          ),
-        ],
-      ),
+      child: Text(
+        text,
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          color: accent,
+          fontSize: 15,
+          fontWeight: FontWeight.w900,
+          height: 1.25,
+        ),
       ),
     );
   }
 }
-

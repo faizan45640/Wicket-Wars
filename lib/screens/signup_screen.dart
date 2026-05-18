@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -6,6 +7,7 @@ import '../auth/auth_messages.dart';
 import '../auth/password_crypto.dart';
 import '../data/providers.dart';
 import '../theme/game_colors.dart';
+import '../widgets/auth_error_banner.dart';
 
 class SignupScreen extends ConsumerStatefulWidget {
   const SignupScreen({super.key});
@@ -22,6 +24,11 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
   var _obscure = true;
   var _obscure2 = true;
   var _loading = false;
+  String? _authError;
+
+  void _clearAuthError() {
+    if (_authError != null) setState(() => _authError = null);
+  }
 
   @override
   void dispose() {
@@ -33,7 +40,10 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
 
   Future<void> _submit() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _authError = null;
+    });
     try {
       final encrypted = PasswordCrypto.encryptPassword(_password.text);
       final passwordForAuth =
@@ -43,21 +53,11 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
             password: passwordForAuth,
           );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Welcome to Wicket Wars!'),
-          backgroundColor: GameColors.card,
-        ),
-      );
       context.go('/');
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(authErrorMessage(e)),
-          backgroundColor: GameColors.card,
-        ),
-      );
+      HapticFeedback.mediumImpact();
+      setState(() => _authError = authErrorMessage(e));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -116,6 +116,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                       style: const TextStyle(color: Colors.white),
                       decoration: _fieldDecoration('Email'),
                       autofillHints: const [AutofillHints.email],
+                      onChanged: (_) => _clearAuthError(),
                       validator: (v) {
                         if (v == null || v.trim().isEmpty) {
                           return 'Enter an email';
@@ -143,6 +144,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                         ),
                       ),
                       autofillHints: const [AutofillHints.newPassword],
+                      onChanged: (_) => _clearAuthError(),
                       validator: (v) {
                         if (v == null || v.length < 6) {
                           return 'At least 6 characters (Firebase rule)';
@@ -166,6 +168,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                           ),
                         ),
                       ),
+                      onChanged: (_) => _clearAuthError(),
                       validator: (v) {
                         if (v != _password.text) {
                           return 'Passwords do not match';
@@ -173,6 +176,14 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                         return null;
                       },
                     ),
+                    if (_authError != null) ...[
+                      const SizedBox(height: 16),
+                      AuthErrorBanner(
+                        message: _authError!,
+                        onDismiss: _clearAuthError,
+                        semanticsLabel: 'Sign up error',
+                      ),
+                    ],
                     const SizedBox(height: 28),
                     FilledButton(
                       onPressed: _loading ? null : _submit,

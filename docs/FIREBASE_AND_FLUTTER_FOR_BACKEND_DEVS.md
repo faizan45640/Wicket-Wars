@@ -68,7 +68,8 @@ Canonical paths live in **`lib/data/firestore_paths.dart`** (like a shared const
 | Path | Purpose |
 |------|---------|
 | `users/{uid}` | User profile (coins, league, stats, …) |
-| `users/{uid}/players/{playerId}` | Squad / player cards |
+| `users/{uid}/players/{playerId}` | Squad cards. Fields include `isRealPlayer`, `playerTier` (`free` \| `premium`), optional `catalogPlayerId`, `attributes`, optional `training`. |
+| `players_catalog/{catalogId}` | Read-only templates for licensed / premium cards (seed in Console). Clients listen via **`FirebasePlayersCatalogRepository`**. |
 | `users/{uid}/matchHistory/{matchId}` | Past matches for that user |
 | `matchRooms/{roomId}` | Online match lobby / room state |
 | `leaderboard/{uid}` | One row per user for ranking (denormalised from profile on write) |
@@ -77,7 +78,8 @@ Canonical paths live in **`lib/data/firestore_paths.dart`** (like a shared const
 
 - **`FirebaseUserRepository`** — Reads/writes `users/{uid}`. If the profile doc is missing, it **seeds** default stats once and **merges** a **`leaderboard/{uid}`** row (so new users can appear on the leaderboard).
 - **`FirebaseSquadRepository`** — `users/{uid}/players` subcollection.
-- **`FirebaseMatchRepository`** — `matchRooms/{roomId}`; `createRoom` generates a short code and avoids collisions with retries.
+- **`FirebasePlayersCatalogRepository`** — `players_catalog`; **read-only** for app users (writes via Console or Admin SDK).
+- **`FirebaseMatchRepository`** — `matchRooms/{roomId}`; `createRoom` generates a short code and avoids collisions with retries. **`transactRoom`** runs a Firestore **transaction** so concurrent “next delivery” taps from two devices merge correctly (retry on contention).
 - **`FirebaseLeaderboardRepository`** — Queries `leaderboard` ordered by `rankingPoints` descending.
 - **`FirebaseMatchHistoryRepository`** — `users/{uid}/matchHistory`, ordered by `completedAt`.
 
@@ -88,8 +90,8 @@ Canonical paths live in **`lib/data/firestore_paths.dart`** (like a shared const
 ### 6. Wiring the UI to live data
 
 - **`HomeScreen`** — `ConsumerWidget`; uses **`userProfileProvider`** (backed by `FirebaseUserRepository.watchProfile`).
-- **`SquadScreen`** — Uses **`currentUidProvider`** + **`squadProvider(uid)`** for the grid (empty state if no players in Firestore).
-- **`LeaderboardScreen`** — **GLOBAL** tab uses **`leaderboardTopProvider`**; **FRIENDS** tab is still placeholder data.
+- **`SquadScreen`** / **`PlayerDetailScreen`** — **`squadProvider(uid)`**; only **`playerTier: free`** and **`isRealPlayer: false`** may use train / coin-upgrade in the UI (premium and real cards are stat-locked).
+- **`LeaderboardScreen`** — **GLOBAL** uses **`leaderboardTopProvider`**; **FRIENDS** lists you plus opponents from **`matchHistoryProvider`**, with points taken from global rows when **display names** match.
 
 ### 7. Riverpod (`lib/data/providers.dart`)
 
@@ -126,9 +128,37 @@ service cloud.firestore {
       allow read: if request.auth != null;
       allow write: if request.auth != null && request.auth.uid == entryId;
     }
+
+    // Seed from Firebase Console / Admin SDK only — clients must not create fake catalog entries.
+    match /players_catalog/{catalogId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
   }
 }
 ```
+
+### Example `players_catalog` document
+
+Create a document ID (e.g. `ace_batter_01`) with fields aligned to **`CatalogPlayer`** / **`CricketPlayer`** maps:
+
+```json
+{
+  "displayName": "Demo Licensed Ace",
+  "isRealPlayer": true,
+  "playerTier": "premium",
+  "cardImageAsset": null,
+  "attributes": {
+    "batting": 84,
+    "bowling": 68,
+    "fielding": 78,
+    "stamina": 80,
+    "consistency": 76
+  }
+}
+```
+
+When you add an **unlock** or **copy-to-squad** flow, create `users/{uid}/players/{newId}` with the same shape plus **`catalogPlayerId`** set to the catalog doc id.
 
 **Production** should narrow `matchRooms` updates (e.g. only `hostUid` / `guestUid`) and decide if `leaderboard` is readable by everyone or only signed-in users.
 

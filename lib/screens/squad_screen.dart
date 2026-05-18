@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../data/models/cricket_player.dart';
+import '../data/models/player_tier.dart';
 import '../data/providers.dart';
 import '../theme/game_colors.dart';
 import '../widgets/game_bottom_nav.dart';
@@ -199,7 +200,7 @@ class _SquadPlayerTile extends StatelessWidget {
               Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  player.isRealPlayer ? 'REAL' : 'CUSTOM',
+                  '${player.isRealPlayer ? 'REAL' : 'CUSTOM'} · ${player.playerTier == PlayerTier.premium ? 'PREMIUM' : 'FREE'}',
                   style: TextStyle(
                     color: _squadSubColor,
                     fontSize: 10,

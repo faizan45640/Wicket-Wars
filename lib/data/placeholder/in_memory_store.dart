@@ -6,6 +6,7 @@ import '../models/match_room.dart';
 import '../models/match_summary.dart';
 import '../models/pitch_condition.dart';
 import '../models/player_attributes.dart';
+import '../models/player_tier.dart';
 import '../models/user_profile.dart';
 
 /// Shared fake backend until Firestore is wired.
@@ -40,6 +41,8 @@ final class InMemoryStore {
       matchesPlayed: 62,
       lastDailyRewardClaimAt: null,
       createdAt: DateTime.utc(2025, 1, 1),
+      dailyStreak: 0,
+      totalRunsScored: 0,
     );
 
     demoPlayersById = {
@@ -48,6 +51,7 @@ final class InMemoryStore {
           id: 'p_$i',
           displayName: 'Squad Player ${i + 1}',
           isRealPlayer: i.isEven,
+          playerTier: i.isEven ? PlayerTier.premium : PlayerTier.free,
           avatarUrl: null,
           cardImageAsset: null,
           attributes: PlayerAttributes(

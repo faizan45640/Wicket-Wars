@@ -1,5 +1,6 @@
 import '../models/cricket_player.dart';
 import '../models/player_attributes.dart';
+import '../models/player_tier.dart';
 
 /// Same squad used on [SquadScreen] and the training player picker (IDs must match).
 List<CricketPlayer> buildDemoSquad() {
@@ -16,6 +17,7 @@ List<CricketPlayer> buildDemoSquad() {
       id: 'p_$i',
       displayName: 'Player $l',
       isRealPlayer: i.isEven,
+      playerTier: i.isEven ? PlayerTier.premium : PlayerTier.free,
       cardImageAsset: null,
       attributes: PlayerAttributes(
         batting: bat,

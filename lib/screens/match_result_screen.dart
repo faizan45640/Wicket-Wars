@@ -1,18 +1,37 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../data/models/innings_result.dart';
+import '../data/models/match_result_args.dart';
 import '../data/placeholder/hardcoded_match_result_data.dart';
 import '../theme/game_colors.dart';
 import '../widgets/game_bottom_nav.dart';
 
-/// Post-match screen: both teams' scores (innings), comparison stats, reward, home.
+/// Post-match screen: scores from [MatchResultArgs] (Firestore flow) or demo fallback.
 class MatchResultScreen extends StatelessWidget {
-  const MatchResultScreen({super.key});
+  const MatchResultScreen({super.key, this.args});
+
+  final MatchResultArgs? args;
 
   @override
   Widget build(BuildContext context) {
-    const i1 = HardcodedMatchResult.innings1;
-    const i2 = HardcodedMatchResult.innings2;
+    final MatchResultArgs effective;
+    if (args != null) {
+      effective = args!;
+    } else {
+      effective = MatchResultArgs(
+        youWon: true,
+        innings1: HardcodedMatchResult.innings1,
+        innings2: HardcodedMatchResult.innings2,
+        headline: HardcodedMatchResult.resultHeadline,
+        coinsEarned: HardcodedMatchResult.coinsEarned,
+        xpEarned: 40,
+      );
+    }
+
+    final i1 = effective.innings1;
+    final i2 = effective.innings2;
+
     return Scaffold(
       backgroundColor: GameColors.bg,
       appBar: AppBar(
@@ -35,108 +54,108 @@ class MatchResultScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-          const Text(
-            'WINNER / FINAL SCORE',
-            style: TextStyle(
-              color: GameColors.muted,
-              fontSize: 10,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0.7,
-            ),
-          ),
-          const SizedBox(height: 10),
-          const Text(
-            HardcodedMatchResult.resultHeadline,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: GameColors.neon,
-              fontSize: 17,
-              fontWeight: FontWeight.w900,
-              height: 1.3,
-            ),
-          ),
-          const SizedBox(height: 20),
-          _InningsLine(
-            label: '1st INNINGS',
-            innings: i1,
-          ),
-          const SizedBox(height: 12),
-          _InningsLine(
-            label: '2nd INNINGS (chase)',
-            innings: i2,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '${i1.teamName} ${i1.runs}/${i1.wicketsDown}  ·  ${i2.teamName} ${i2.runs}/${i2.wicketsDown}',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: GameColors.muted.withValues(alpha: 0.95),
-              fontSize: 12,
-            ),
-          ),
-          const SizedBox(height: 24),
-          const Text(
-            'TEAM COMPARISON (INNINGS)',
-            style: TextStyle(
-              color: Color(0xFFAAAAAA),
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0.6,
-            ),
-          ),
-          const SizedBox(height: 10),
-          _CompareCard(
-            leftLabel: i1.teamName,
-            rightLabel: i2.teamName,
-            leftRuns: i1.runs,
-            rightRuns: i2.runs,
-            leftWkts: i1.wicketsDown,
-            rightWkts: i2.wicketsDown,
-            leftRr: i1.runRate,
-            rightRr: i2.runRate,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Bars are scaled vs a notional cap (runs 200, run rate 12). Demo only.',
-            style: TextStyle(
-              color: GameColors.muted.withValues(alpha: 0.65),
-              fontSize: 10,
-            ),
-          ),
-          const SizedBox(height: 24),
-          _RewardsBox(coins: HardcodedMatchResult.coinsEarned),
-          const SizedBox(height: 28),
-          ElevatedButton(
-            onPressed: () => context.go('/'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF2C2C2C),
-              foregroundColor: const Color(0xFFF0F0F0),
-              elevation: 0,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
-                side: const BorderSide(color: GameColors.cardBorder),
-              ),
-            ),
-            child: const Text(
-              'RETURN TO HOME',
-              style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.4),
-            ),
-          ),
-          const SizedBox(height: 12),
-          TextButton.icon(
-            onPressed: () => context.go('/'),
-            icon: const Icon(Icons.arrow_back, color: GameColors.muted, size: 18),
-            label: const Text(
-              'Return to dashboard',
+            const Text(
+              'FINAL',
               style: TextStyle(
                 color: GameColors.muted,
-                fontWeight: FontWeight.w600,
-                fontSize: 13,
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.7,
               ),
             ),
-          ),
-        ],
+            const SizedBox(height: 10),
+            Text(
+              effective.headline,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: GameColors.neon,
+                fontSize: 17,
+                fontWeight: FontWeight.w900,
+                height: 1.3,
+              ),
+            ),
+            if (args == null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  'Demo fallback — complete a match from Online lobby for live data.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: GameColors.muted.withValues(alpha: 0.85), fontSize: 11),
+                ),
+              ),
+            const SizedBox(height: 20),
+            _InningsLine(label: '1st INNINGS', innings: i1),
+            const SizedBox(height: 12),
+            _InningsLine(label: '2nd INNINGS (chase)', innings: i2),
+            const SizedBox(height: 8),
+            Text(
+              '${i1.teamName} ${i1.runs}/${i1.wicketsDown}  ·  ${i2.teamName} ${i2.runs}/${i2.wicketsDown}',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: GameColors.muted.withValues(alpha: 0.95),
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'TEAM COMPARISON (INNINGS)',
+              style: TextStyle(
+                color: Color(0xFFAAAAAA),
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.6,
+              ),
+            ),
+            const SizedBox(height: 10),
+            _CompareCard(
+              leftLabel: i1.teamName,
+              rightLabel: i2.teamName,
+              leftRuns: i1.runs,
+              rightRuns: i2.runs,
+              leftWkts: i1.wicketsDown,
+              rightWkts: i2.wicketsDown,
+              leftRr: i1.runRate,
+              rightRr: i2.runRate,
+            ),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(
+                  child: _RewardsBox(
+                    icon: Icons.monetization_on_rounded,
+                    label: 'COINS',
+                    value: effective.coinsEarned.toString(),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _RewardsBox(
+                    icon: Icons.bolt_rounded,
+                    label: 'RANKING XP',
+                    value: effective.xpEarned.toString(),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 28),
+            ElevatedButton(
+              onPressed: () => context.go('/'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF2C2C2C),
+                foregroundColor: const Color(0xFFF0F0F0),
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  side: const BorderSide(color: GameColors.cardBorder),
+                ),
+              ),
+              child: const Text(
+                'RETURN TO HOME',
+                style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.4),
+              ),
+            ),
+          ],
         ),
       ),
       bottomNavigationBar: const GameBottomNav(selectedIndex: 2),
@@ -160,44 +179,43 @@ class _InningsLine extends StatelessWidget {
       ),
       elevation: 0,
       child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(
-              color: GameColors.muted,
-              fontSize: 9,
-              fontWeight: FontWeight.w800,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(
+                color: GameColors.muted,
+                fontSize: 9,
+                fontWeight: FontWeight.w800,
+              ),
             ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            innings.teamName,
-            style: const TextStyle(
-              color: Color(0xFFFAFAFA),
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
+            const SizedBox(height: 6),
+            Text(
+              innings.teamName,
+              style: const TextStyle(
+                color: Color(0xFFFAFAFA),
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+              ),
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            innings.scoreLine,
-            style: TextStyle(
-              color: GameColors.neon.withValues(alpha: 0.95),
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
+            const SizedBox(height: 4),
+            Text(
+              innings.scoreLine,
+              style: TextStyle(
+                color: GameColors.neon.withValues(alpha: 0.95),
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+              ),
             ),
-          ),
-        ],
-      ),
+          ],
+        ),
       ),
     );
   }
 }
 
-/// Side-by-side: each row is one stat (runs, wkts lost, run rate) for *both* teams.
 class _CompareCard extends StatelessWidget {
   const _CompareCard({
     required this.leftLabel,
@@ -229,40 +247,40 @@ class _CompareCard extends StatelessWidget {
       ),
       elevation: 0,
       child: Padding(
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _pairHeader(leftLabel, rightLabel),
-          const SizedBox(height: 14),
-          _statRow(
-            'Runs (innings total)',
-            leftRuns,
-            rightRuns,
-            200,
-            const Color(0xFF64B5F6),
-            const Color(0xFF81C784),
-          ),
-          const SizedBox(height: 12),
-          _statRow(
-            'Wkts lost',
-            leftWkts,
-            rightWkts,
-            10,
-            const Color(0xFFFFB74D),
-            const Color(0xFFBA68C8),
-          ),
-          const SizedBox(height: 12),
-          _statRowDouble(
-            'Run rate (RPO)',
-            leftRr,
-            rightRr,
-            12,
-            GameColors.neon,
-            const Color(0xFF4DD0E1),
-          ),
-        ],
-      ),
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _CompareCard._pairHeader(leftLabel, rightLabel),
+            const SizedBox(height: 14),
+            _CompareCard._statRow(
+              'Runs (innings total)',
+              leftRuns,
+              rightRuns,
+              200,
+              const Color(0xFF64B5F6),
+              const Color(0xFF81C784),
+            ),
+            const SizedBox(height: 12),
+            _CompareCard._statRow(
+              'Wkts lost',
+              leftWkts,
+              rightWkts,
+              10,
+              const Color(0xFFFFB74D),
+              const Color(0xFFBA68C8),
+            ),
+            const SizedBox(height: 12),
+            _CompareCard._statRowDouble(
+              'Run rate (RPO)',
+              leftRr,
+              rightRr,
+              12,
+              GameColors.neon,
+              const Color(0xFF4DD0E1),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -415,9 +433,15 @@ class _CompareCard extends StatelessWidget {
 }
 
 class _RewardsBox extends StatelessWidget {
-  const _RewardsBox({required this.coins});
+  const _RewardsBox({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
 
-  final int coins;
+  final IconData icon;
+  final String label;
+  final String value;
 
   @override
   Widget build(BuildContext context) {
@@ -429,18 +453,26 @@ class _RewardsBox extends StatelessWidget {
       ),
       elevation: 0,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        child: Row(
+        padding: const EdgeInsets.all(14),
+        child: Column(
           children: [
-            const Icon(Icons.star_rate_rounded, color: Colors.amber, size: 32),
-            const SizedBox(width: 12),
+            Icon(icon, color: Colors.amber, size: 28),
+            const SizedBox(height: 8),
             Text(
-              'COINS EARNED: $coins',
+              label,
+              style: TextStyle(
+                color: GameColors.muted.withValues(alpha: 0.9),
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              value,
               style: const TextStyle(
                 color: Color(0xFFF5F5F5),
-                fontSize: 16,
+                fontSize: 20,
                 fontWeight: FontWeight.w900,
-                letterSpacing: 0.3,
               ),
             ),
           ],

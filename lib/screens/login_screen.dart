@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -6,6 +7,7 @@ import '../auth/auth_messages.dart';
 import '../auth/password_crypto.dart';
 import '../data/providers.dart';
 import '../theme/game_colors.dart';
+import '../widgets/auth_error_banner.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -20,6 +22,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _password = TextEditingController();
   var _obscure = true;
   var _loading = false;
+  String? _authError;
+
+  void _clearAuthError() {
+    if (_authError != null) setState(() => _authError = null);
+  }
 
   @override
   void dispose() {
@@ -30,7 +37,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   Future<void> _submit() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _authError = null;
+    });
     try {
       final encrypted = PasswordCrypto.encryptPassword(_password.text);
       final passwordForAuth =
@@ -43,12 +53,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       context.go('/');
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(authErrorMessage(e)),
-          backgroundColor: GameColors.card,
-        ),
-      );
+      HapticFeedback.mediumImpact();
+      setState(() => _authError = authErrorMessage(e));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -70,7 +76,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     const SizedBox(height: 24),
-                    const Text(
+                    Text(
                       'WICKET WARS',
                       textAlign: TextAlign.center,
                       style: TextStyle(
@@ -98,6 +104,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       autofillHints: const [AutofillHints.email],
                       style: const TextStyle(color: Colors.white),
                       decoration: _fieldDecoration('Email'),
+                      onChanged: (_) => _clearAuthError(),
                       validator: (v) {
                         if (v == null || v.trim().isEmpty) {
                           return 'Enter your email';
@@ -123,6 +130,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           ),
                         ),
                       ),
+                      onChanged: (_) => _clearAuthError(),
                       validator: (v) {
                         if (v == null || v.isEmpty) {
                           return 'Enter your password';
@@ -130,6 +138,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         return null;
                       },
                     ),
+                    if (_authError != null) ...[
+                      const SizedBox(height: 16),
+                      AuthErrorBanner(
+                        message: _authError!,
+                        onDismiss: _clearAuthError,
+                        semanticsLabel: 'Sign in error',
+                      ),
+                    ],
                     const SizedBox(height: 28),
                     FilledButton(
                       onPressed: _loading ? null : _submit,
@@ -179,7 +195,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         ),
                         TextButton(
                           onPressed: _loading ? null : () => context.push('/signup'),
-                          child: const Text(
+                          child: Text(
                             'Sign up',
                             style: TextStyle(
                               color: GameColors.neon,

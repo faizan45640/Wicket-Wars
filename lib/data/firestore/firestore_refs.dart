@@ -18,4 +18,7 @@ extension WicketWarsFirestore on FirebaseFirestore {
 
   CollectionReference<Map<String, dynamic>> leaderboardCollection() =>
       collection(FirestorePaths.leaderboard);
+
+  CollectionReference<Map<String, dynamic>> playersCatalog() =>
+      collection(FirestorePaths.playersCatalog);
 }

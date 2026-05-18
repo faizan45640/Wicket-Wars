@@ -32,6 +32,11 @@ class MatchRoom {
     this.guestRuns = 0,
     this.hostWickets = 0,
     this.guestWickets = 0,
+    this.hostLegalBalls = 0,
+    this.guestLegalBalls = 0,
+    this.inningsNumber = 1,
+    this.hostBatFirst,
+    this.chaseTarget,
     this.completedAt,
     this.commentaryTail = const [],
   });
@@ -50,6 +55,18 @@ class MatchRoom {
   final int guestRuns;
   final int hostWickets;
   final int guestWickets;
+  /// Legal balls faced by host (for run rate / result).
+  final int hostLegalBalls;
+  final int guestLegalBalls;
+  /// 1 = first innings, 2 = chase.
+  final int inningsNumber;
+
+  /// When non-null, host bats in innings 1. Set when the match engine starts (toss).
+  final bool? hostBatFirst;
+
+  /// Runs required for the chasing team to win (innings 2), set after innings 1 ends.
+  final int? chaseTarget;
+
   final DateTime? completedAt;
   final List<String> commentaryTail;
 
@@ -68,6 +85,11 @@ class MatchRoom {
         'guestRuns': guestRuns,
         'hostWickets': hostWickets,
         'guestWickets': guestWickets,
+        'hostLegalBalls': hostLegalBalls,
+        'guestLegalBalls': guestLegalBalls,
+        'inningsNumber': inningsNumber,
+        'hostBatFirst': hostBatFirst,
+        'chaseTarget': chaseTarget,
         'completedAt': completedAt?.toUtc().toIso8601String(),
         'commentaryTail': commentaryTail,
       };
@@ -88,10 +110,63 @@ class MatchRoom {
       guestRuns: (map['guestRuns'] as num?)?.round() ?? 0,
       hostWickets: (map['hostWickets'] as num?)?.round() ?? 0,
       guestWickets: (map['guestWickets'] as num?)?.round() ?? 0,
+      hostLegalBalls: (map['hostLegalBalls'] as num?)?.round() ?? 0,
+      guestLegalBalls: (map['guestLegalBalls'] as num?)?.round() ?? 0,
+      inningsNumber: (map['inningsNumber'] as num?)?.round() ?? 1,
+      hostBatFirst: map['hostBatFirst'] as bool?,
+      chaseTarget: (map['chaseTarget'] as num?)?.round(),
       completedAt: map['completedAt'] != null
           ? DateTime.parse(map['completedAt'] as String).toLocal()
           : null,
       commentaryTail: List<String>.from(map['commentaryTail'] as List? ?? const []),
+    );
+  }
+
+  MatchRoom copyWith({
+    String? roomId,
+    String? roomCode,
+    MatchRoomStatus? status,
+    PitchCondition? pitch,
+    String? hostUid,
+    String? guestUid,
+    List<String>? hostPlayingXi,
+    List<String>? guestPlayingXi,
+    bool? hostXiLocked,
+    bool? guestXiLocked,
+    int? hostRuns,
+    int? guestRuns,
+    int? hostWickets,
+    int? guestWickets,
+    int? hostLegalBalls,
+    int? guestLegalBalls,
+    int? inningsNumber,
+    bool? hostBatFirst,
+    int? chaseTarget,
+    DateTime? completedAt,
+    List<String>? commentaryTail,
+  }) {
+    return MatchRoom(
+      roomId: roomId ?? this.roomId,
+      roomCode: roomCode ?? this.roomCode,
+      status: status ?? this.status,
+      pitch: pitch ?? this.pitch,
+      hostUid: hostUid ?? this.hostUid,
+      guestUid: guestUid ?? this.guestUid,
+      hostPlayingXi: hostPlayingXi ?? this.hostPlayingXi,
+      guestPlayingXi: guestPlayingXi ?? this.guestPlayingXi,
+      hostXiLocked: hostXiLocked ?? this.hostXiLocked,
+      guestXiLocked: guestXiLocked ?? this.guestXiLocked,
+      hostRuns: hostRuns ?? this.hostRuns,
+      guestRuns: guestRuns ?? this.guestRuns,
+      hostWickets: hostWickets ?? this.hostWickets,
+      guestWickets: guestWickets ?? this.guestWickets,
+      hostLegalBalls: hostLegalBalls ?? this.hostLegalBalls,
+      guestLegalBalls: guestLegalBalls ?? this.guestLegalBalls,
+      inningsNumber: inningsNumber ?? this.inningsNumber,
+      hostBatFirst: hostBatFirst ?? this.hostBatFirst,
+      chaseTarget: chaseTarget ?? this.chaseTarget,
+      completedAt: completedAt ?? this.completedAt,
+      commentaryTail: commentaryTail ?? this.commentaryTail,
     );
   }
 

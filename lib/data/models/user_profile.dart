@@ -12,6 +12,8 @@ class UserProfile {
     this.email,
     this.lastDailyRewardClaimAt,
     this.createdAt,
+    this.dailyStreak = 0,
+    this.totalRunsScored = 0,
   });
 
   final String uid;
@@ -26,6 +28,12 @@ class UserProfile {
   final DateTime? lastDailyRewardClaimAt;
   final DateTime? createdAt;
 
+  /// Consecutive calendar days with a daily reward claim (updated on claim).
+  final int dailyStreak;
+
+  /// Career runs for profile stats (updated when matches complete).
+  final int totalRunsScored;
+
   Map<String, dynamic> toMap() => {
         'uid': uid,
         'displayName': displayName,
@@ -38,6 +46,8 @@ class UserProfile {
         'matchesPlayed': matchesPlayed,
         'lastDailyRewardClaimAt': lastDailyRewardClaimAt?.toUtc().toIso8601String(),
         'createdAt': createdAt?.toUtc().toIso8601String(),
+        'dailyStreak': dailyStreak,
+        'totalRunsScored': totalRunsScored,
       };
 
   factory UserProfile.fromMap(Map<String, dynamic> map) {
@@ -57,6 +67,40 @@ class UserProfile {
       createdAt: map['createdAt'] != null
           ? DateTime.parse(map['createdAt'] as String).toLocal()
           : null,
+      dailyStreak: (map['dailyStreak'] as num?)?.round() ?? 0,
+      totalRunsScored: (map['totalRunsScored'] as num?)?.round() ?? 0,
+    );
+  }
+
+  UserProfile copyWith({
+    String? uid,
+    String? displayName,
+    String? email,
+    int? coins,
+    int? rankingPoints,
+    String? leagueTier,
+    int? wins,
+    int? losses,
+    int? matchesPlayed,
+    DateTime? lastDailyRewardClaimAt,
+    DateTime? createdAt,
+    int? dailyStreak,
+    int? totalRunsScored,
+  }) {
+    return UserProfile(
+      uid: uid ?? this.uid,
+      displayName: displayName ?? this.displayName,
+      email: email ?? this.email,
+      coins: coins ?? this.coins,
+      rankingPoints: rankingPoints ?? this.rankingPoints,
+      leagueTier: leagueTier ?? this.leagueTier,
+      wins: wins ?? this.wins,
+      losses: losses ?? this.losses,
+      matchesPlayed: matchesPlayed ?? this.matchesPlayed,
+      lastDailyRewardClaimAt: lastDailyRewardClaimAt ?? this.lastDailyRewardClaimAt,
+      createdAt: createdAt ?? this.createdAt,
+      dailyStreak: dailyStreak ?? this.dailyStreak,
+      totalRunsScored: totalRunsScored ?? this.totalRunsScored,
     );
   }
 }

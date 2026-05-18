@@ -23,6 +23,8 @@ class FirebaseUserRepository implements UserRepository {
       losses: 0,
       matchesPlayed: 0,
       createdAt: DateTime.now().toUtc(),
+      dailyStreak: 0,
+      totalRunsScored: 0,
     );
   }
 

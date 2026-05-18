@@ -7,4 +7,11 @@ abstract class MatchRepository {
   Future<MatchRoom> createRoom({required String hostUid});
   Future<void> joinRoom({required String roomCode, required String guestUid});
   Future<void> saveRoom(MatchRoom room);
+
+  /// Read–modify–write in one atomic step (Firestore transaction; sequential in placeholder).
+  /// Return `null` from [update] to abort without writing.
+  Future<MatchRoom?> transactRoom(
+    String roomId,
+    MatchRoom? Function(MatchRoom current) update,
+  );
 }

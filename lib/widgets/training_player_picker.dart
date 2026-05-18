@@ -1,12 +1,40 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../data/placeholder/demo_squad.dart';
+import '../data/providers.dart';
 import '../theme/game_colors.dart';
 
-/// Pick a squad member, then open [PlayerDetailScreen] for the timed training flow.
-Future<void> showTrainingPlayerPicker(BuildContext parentContext) async {
-  final players = buildDemoSquad();
+Future<void> showTrainingPlayerPicker(BuildContext parentContext, WidgetRef ref) async {
+  final uid = ref.read(currentUidProvider);
+  if (uid == null) {
+    ScaffoldMessenger.of(parentContext).showSnackBar(
+      const SnackBar(content: Text('Sign in to train your squad.')),
+    );
+    return;
+  }
+  final asyncSquad = ref.read(squadProvider(uid));
+  final players = asyncSquad.valueOrNull ?? [];
+  final trainable = players.where((p) => p.canTrainAndUpgrade).toList();
+  if (players.isEmpty) {
+    ScaffoldMessenger.of(parentContext).showSnackBar(
+      const SnackBar(
+        content: Text('No players in Firestore yet. Add documents under users/{uid}/players.'),
+      ),
+    );
+    return;
+  }
+  if (trainable.isEmpty) {
+    ScaffoldMessenger.of(parentContext).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'No trainable players — premium and licensed cards have fixed stats. Add or unlock free custom players.',
+        ),
+      ),
+    );
+    return;
+  }
+
   await showModalBottomSheet<void>(
     context: parentContext,
     backgroundColor: Colors.transparent,
@@ -52,7 +80,7 @@ Future<void> showTrainingPlayerPicker(BuildContext parentContext) async {
                   ),
                 ),
                 Text(
-                  'Opens their card — use TRAIN PLAYER for the timed session.',
+                  'Free custom players only (premium / licensed cards are locked).',
                   style: TextStyle(
                     color: GameColors.muted.withValues(alpha: 0.9),
                     fontSize: 12,
@@ -64,9 +92,9 @@ Future<void> showTrainingPlayerPicker(BuildContext parentContext) async {
                   child: ListView.builder(
                     controller: scrollController,
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                    itemCount: players.length,
+                    itemCount: trainable.length,
                     itemBuilder: (context, i) {
-                      final p = players[i];
+                      final p = trainable[i];
                       final ovr = p.attributes.overall;
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 8),
@@ -116,7 +144,7 @@ Future<void> showTrainingPlayerPicker(BuildContext parentContext) async {
                                         ),
                                         const SizedBox(height: 2),
                                         Text(
-                                          p.isRealPlayer ? 'REAL' : 'CUSTOM',
+                                          'FREE · TRAINABLE',
                                           style: TextStyle(
                                             color: GameColors.muted.withValues(alpha: 0.9),
                                             fontSize: 11,

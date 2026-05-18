@@ -38,6 +38,19 @@ class PlaceholderMatchRepository implements MatchRepository {
   }
 
   @override
+  Future<MatchRoom?> transactRoom(
+    String roomId,
+    MatchRoom? Function(MatchRoom current) update,
+  ) async {
+    final current = _store.roomsById[roomId];
+    if (current == null) return null;
+    final next = update(current);
+    if (next == null) return null;
+    _store.roomsById[roomId] = next;
+    return next;
+  }
+
+  @override
   Stream<MatchRoom?> watchRoom(String roomId) async* {
     yield _store.roomsById[roomId];
   }

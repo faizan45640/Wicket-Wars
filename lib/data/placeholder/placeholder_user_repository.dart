@@ -24,6 +24,8 @@ class PlaceholderUserRepository implements UserRepository {
       matchesPlayed: base.matchesPlayed,
       lastDailyRewardClaimAt: base.lastDailyRewardClaimAt,
       createdAt: base.createdAt,
+      dailyStreak: base.dailyStreak,
+      totalRunsScored: base.totalRunsScored,
     );
   }
 

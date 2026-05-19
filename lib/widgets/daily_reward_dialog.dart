@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../data/models/user_profile.dart';
 import '../data/providers.dart';
+import '../data/streak_player_reward.dart';
 import '../theme/game_colors.dart';
 
 const List<int> kCoinRewardByDay = [50, 75, 100, 150, 200, 300, 500];
@@ -216,6 +217,16 @@ Widget _streakSummary(int streak, bool canClaim) {
               ),
               const SizedBox(height: 2),
               Text(
+                'Every $kStreakPlayerBonusInterval days you also get a bonus trainable player (or coins if your squad has 15+).',
+                style: TextStyle(
+                  color: GameColors.neon.withValues(alpha: 0.85),
+                  fontSize: 11,
+                  height: 1.35,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
                 'Stored in your Firestore profile.',
                 style: TextStyle(
                   color: GameColors.muted.withValues(alpha: 0.95),
@@ -317,22 +328,47 @@ Widget _claimBar(
           ? () async {
               final nextStreak = _nextStreakAfterClaim(profile);
               final reward = _rewardForStreak(nextStreak);
-              final updated = profile.copyWith(
+              var updated = profile.copyWith(
                 coins: profile.coins + reward,
                 lastDailyRewardClaimAt: DateTime.now(),
                 dailyStreak: nextStreak,
               );
               await ref.read(userRepositoryProvider).upsertProfile(updated);
+
+              final streakBonus = await applyStreakPlayerBonus(
+                nextStreakAfterClaim: nextStreak,
+                uid: profile.uid,
+                loadSquad: ref.read(squadRepositoryProvider).getSquad,
+                savePlayer: ref.read(squadRepositoryProvider).upsertPlayer,
+                loadCatalog: () =>
+                    ref.read(playersCatalogRepositoryProvider).watchCatalog().first,
+              );
+              if (streakBonus.extraCoins > 0) {
+                updated = updated.copyWith(coins: updated.coins + streakBonus.extraCoins);
+                await ref.read(userRepositoryProvider).upsertProfile(updated);
+              }
+
               if (!dialogContext.mounted) return;
               Navigator.of(dialogContext).pop();
               SchedulerBinding.instance.addPostFrameCallback((_) {
                 if (!scaffoldContext.mounted) return;
                 final messenger = ScaffoldMessenger.of(scaffoldContext);
                 messenger.clearSnackBars();
+
+                var msg =
+                    'Claimed ${_coinFmt.format(reward)} coins. Streak: $nextStreak days.';
+                if (streakBonus.summaryLine.isNotEmpty) {
+                  msg += ' ${streakBonus.summaryLine}';
+                }
+                if (streakBonus.extraCoins > 0) {
+                  msg +=
+                      ' +${_coinFmt.format(streakBonus.extraCoins)} coins (squad full).';
+                }
+
                 messenger.showSnackBar(
                   SnackBar(
                     content: Text(
-                      'Claimed ${_coinFmt.format(reward)} coins. Streak: $nextStreak days.',
+                      msg,
                       style: const TextStyle(
                         color: Color(0xFFFAFAFA),
                         fontWeight: FontWeight.w600,
@@ -341,7 +377,7 @@ Widget _claimBar(
                     backgroundColor: const Color(0xFF383838),
                     behavior: SnackBarBehavior.floating,
                     margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                    duration: const Duration(seconds: 4),
+                    duration: const Duration(seconds: 5),
                     showCloseIcon: true,
                     closeIconColor: GameColors.neon,
                   ),

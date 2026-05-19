@@ -25,6 +25,9 @@ final class InMemoryStore {
   final Map<String, MatchRoom> roomsById = {};
   final Map<String, List<MatchSummary>> matchHistoryByUid = {};
 
+  /// Squads for non-demo UIDs (widget tests, offline streak bonuses, etc.).
+  final Map<String, Map<String, CricketPlayer>> extraSquadsByUid = {};
+
   void ensureInitialized() {
     if (_initialized) return;
     _initialized = true;

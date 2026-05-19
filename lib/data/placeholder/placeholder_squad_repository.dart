@@ -12,20 +12,31 @@ class PlaceholderSquadRepository implements SquadRepository {
   @override
   Future<List<CricketPlayer>> getSquad(String uid) async {
     if (uid.isEmpty) return [];
-    return _store.demoPlayersById.values.toList();
+    if (uid == InMemoryStore.demoUid) {
+      return _store.demoPlayersById.values.toList();
+    }
+    final m = _store.extraSquadsByUid[uid];
+    if (m == null || m.isEmpty) return [];
+    return m.values.toList();
   }
 
   @override
   Future<void> upsertPlayer(String uid, CricketPlayer player) async {
     if (uid.isEmpty) return;
-    if (uid != InMemoryStore.demoUid) return;
-    _store.demoPlayersById[player.id] = player;
+    if (uid == InMemoryStore.demoUid) {
+      _store.demoPlayersById[player.id] = player;
+      return;
+    }
+    _store.extraSquadsByUid.putIfAbsent(uid, () => {})[player.id] = player;
   }
 
   @override
   Future<void> deletePlayer(String uid, String playerId) async {
-    if (uid != InMemoryStore.demoUid) return;
-    _store.demoPlayersById.remove(playerId);
+    if (uid == InMemoryStore.demoUid) {
+      _store.demoPlayersById.remove(playerId);
+      return;
+    }
+    _store.extraSquadsByUid[uid]?.remove(playerId);
   }
 
   @override

@@ -67,7 +67,7 @@ Canonical paths live in **`lib/data/firestore_paths.dart`** (like a shared const
 
 | Path | Purpose |
 |------|---------|
-| `users/{uid}` | User profile (coins, league, stats, …) |
+| `users/{uid}` | User profile (coins, `dailyStreak`, `lastDailyRewardClaimAt`, league, stats, …). Claiming daily reward may also **`upsert` a squad player** on every 4th streak day. |
 | `users/{uid}/players/{playerId}` | Squad cards. Fields include `isRealPlayer`, `playerTier` (`free` \| `premium`), optional `catalogPlayerId`, `attributes`, optional `training`. |
 | `players_catalog/{catalogId}` | Read-only templates for licensed / premium cards (seed in Console). Clients listen via **`FirebasePlayersCatalogRepository`**. |
 | `users/{uid}/matchHistory/{matchId}` | Past matches for that user |

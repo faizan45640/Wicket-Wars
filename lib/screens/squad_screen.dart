@@ -7,11 +7,13 @@ import '../data/models/player_tier.dart';
 import '../data/providers.dart';
 import '../theme/game_colors.dart';
 import '../widgets/game_bottom_nav.dart';
+import '../widgets/monetization_banner.dart';
+import '../widgets/player_card_image.dart';
 
 const Color _squadNameColor = Color(0xFFEEEEEE);
 const Color _squadSubColor = Color(0xFFC8C8C8);
 
-/// My Squad — text-only cards (name, OVR, type, stat bars), no photos.
+/// My Squad — player-card grid with portraits, role, tier, and core stats.
 class SquadScreen extends ConsumerWidget {
   const SquadScreen({super.key});
 
@@ -27,7 +29,11 @@ class SquadScreen extends ConsumerWidget {
         elevation: 0,
         scrolledUnderElevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: GameColors.neon, size: 20),
+          icon: const Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: GameColors.neon,
+            size: 20,
+          ),
           onPressed: () => context.go('/'),
         ),
         centerTitle: true,
@@ -41,106 +47,133 @@ class SquadScreen extends ConsumerWidget {
           ),
         ),
       ),
-      body: uid == null
-          ? const Center(
-              child: Text('Sign in to view your squad.', style: TextStyle(color: Colors.white70)),
-            )
-          : Column(
-              children: [
-                Expanded(
-                  child: squadAsync!.when(
-                    loading: () => const Center(
-                      child: CircularProgressIndicator(color: GameColors.neon),
-                    ),
-                    error: (e, _) => Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Text(
-                          'Could not load squad: $e',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.red.shade200),
-                        ),
-                      ),
-                    ),
-                    data: (squad) {
-                      if (squad.isEmpty) {
-                        return Center(
-                          child: Padding(
-                            padding: const EdgeInsets.all(24),
-                            child: Text(
-                              'No players in Firestore yet.\n'
-                              'They will appear here when you add cards (or seed data in the console).',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: GameColors.muted.withValues(alpha: 0.95),
-                                height: 1.4,
+      body:
+          uid == null
+              ? const Center(
+                child: Text(
+                  'Sign in to view your squad.',
+                  style: TextStyle(color: Colors.white70),
+                ),
+              )
+              : Column(
+                children: [
+                  Expanded(
+                    child: squadAsync!.when(
+                      loading:
+                          () => const Center(
+                            child: CircularProgressIndicator(
+                              color: GameColors.neon,
+                            ),
+                          ),
+                      error:
+                          (e, _) => Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(24),
+                              child: Text(
+                                'Could not load squad: $e',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: Colors.red.shade200),
                               ),
                             ),
                           ),
-                        );
-                      }
-                      return GridView.builder(
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 2,
-                          mainAxisSpacing: 12,
-                          crossAxisSpacing: 12,
-                          childAspectRatio: 0.95,
-                        ),
-                        itemCount: squad.length,
-                        itemBuilder: (context, index) {
-                          final p = squad[index];
-                          return _SquadPlayerTile(
-                            player: p,
-                            onTap: () => context.push('/player/${p.id}', extra: p),
+                      data: (squad) {
+                        if (squad.isEmpty) {
+                          return Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(24),
+                              child: Text(
+                                'No players in Firestore yet.\n'
+                                'They will appear here when you add cards (or seed data in the console).',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: GameColors.muted.withValues(
+                                    alpha: 0.95,
+                                  ),
+                                  height: 1.4,
+                                ),
+                              ),
+                            ),
                           );
-                        },
-                      );
-                    },
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-                  child: ElevatedButton.icon(
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Pick 11 players — coming in match lobby'),
-                          behavior: SnackBarBehavior.floating,
-                        ),
-                      );
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF2A2A2A),
-                      foregroundColor: _squadNameColor,
-                      elevation: 0,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        }
+                        final sorted = [...squad]..sort(
+                          (a, b) => b.attributes.overall.compareTo(
+                            a.attributes.overall,
+                          ),
+                        );
+                        return GridView.builder(
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 2,
+                                mainAxisSpacing: 12,
+                                crossAxisSpacing: 12,
+                                childAspectRatio: 0.66,
+                              ),
+                          itemCount: sorted.length,
+                          itemBuilder: (context, index) {
+                            final p = sorted[index];
+                            return _SquadPlayerTile(
+                              player: p,
+                              onTap:
+                                  () =>
+                                      context.push('/player/${p.id}', extra: p),
+                            );
+                          },
+                        );
+                      },
                     ),
-                    icon: const Icon(Icons.check_circle_outline, color: GameColors.neon, size: 22),
-                    label: const Text(
-                      'Select Playing XI',
-                      style: TextStyle(
-                        color: _squadNameColor,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 15,
-                        letterSpacing: 0.3,
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Pick 11 players in the online match lobby.',
+                            ),
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF2A2A2A),
+                        foregroundColor: _squadNameColor,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      icon: const Icon(
+                        Icons.check_circle_outline,
+                        color: GameColors.neon,
+                        size: 22,
+                      ),
+                      label: const Text(
+                        'Playing XI',
+                        style: TextStyle(
+                          color: _squadNameColor,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 15,
+                          letterSpacing: 0.3,
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ],
-            ),
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(20, 0, 20, 12),
+                    child: Center(child: MonetizationBanner()),
+                  ),
+                ],
+              ),
       bottomNavigationBar: const GameBottomNav(selectedIndex: 1),
     );
   }
 }
 
 class _SquadPlayerTile extends StatelessWidget {
-  const _SquadPlayerTile({
-    required this.player,
-    required this.onTap,
-  });
+  const _SquadPlayerTile({required this.player, required this.onTap});
 
   final CricketPlayer player;
   final VoidCallback onTap;
@@ -149,77 +182,90 @@ class _SquadPlayerTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final a = player.attributes;
     final ovr = a.overall;
-    final batP = a.batting / 100.0;
-    final bwlP = a.bowling / 100.0;
+    final tierLabel =
+        player.playerTier == PlayerTier.premium ? 'PREMIUM' : 'FREE';
+    final typeLabel = player.isRealPlayer ? 'REAL' : 'CUSTOM';
 
     return Material(
       color: GameColors.card,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(12),
       elevation: 1,
       shadowColor: Colors.black54,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(12),
             border: Border.all(color: GameColors.cardBorder, width: 1.2),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Text(
-                      player.displayName,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: _squadNameColor,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 14,
-                        height: 1.2,
+              Expanded(
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: PlayerCardImage(
+                        imageAsset: player.cardImageAsset,
+                        imageUrl: player.avatarUrl,
+                        isReal: player.isRealPlayer,
+                        playerName: player.displayName,
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    '$ovr',
-                    style: const TextStyle(
-                      color: GameColors.neon,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 18,
+                    Positioned(left: 6, top: 6, child: _RatingPill(ovr: ovr)),
+                    Positioned(
+                      right: 6,
+                      top: 6,
+                      child: _RolePill(label: player.effectiveRole.shortLabel),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  '${player.isRealPlayer ? 'REAL' : 'CUSTOM'} · ${player.playerTier == PlayerTier.premium ? 'PREMIUM' : 'FREE'}',
-                  style: TextStyle(
-                    color: _squadSubColor,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.5,
-                  ),
+                  ],
                 ),
               ),
-              const Spacer(),
-              _MiniBar(
-                label: 'BAT',
-                value: batP,
-                color: const Color(0xFF64B5F6),
+              const SizedBox(height: 8),
+              Text(
+                player.displayName,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: _squadNameColor,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 13,
+                  height: 1.15,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '${player.roleLabel} · ${player.countryLabel}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: _squadSubColor,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
               const SizedBox(height: 6),
-              _MiniBar(
-                label: 'BWL',
-                value: bwlP,
-                color: GameColors.neon,
+              Text(
+                '$typeLabel · $tierLabel',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color:
+                      player.playerTier == PlayerTier.premium
+                          ? Colors.amber.shade400
+                          : GameColors.muted.withValues(alpha: 0.95),
+                  fontSize: 9,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.45,
+                ),
+              ),
+              const SizedBox(height: 8),
+              _MiniStatRow(
+                batting: a.batting,
+                bowling: a.bowling,
+                fielding: a.fielding,
               ),
             ],
           ),
@@ -229,43 +275,116 @@ class _SquadPlayerTile extends StatelessWidget {
   }
 }
 
-class _MiniBar extends StatelessWidget {
-  const _MiniBar({
-    required this.label,
-    required this.value,
-    required this.color,
-  });
+class _RatingPill extends StatelessWidget {
+  const _RatingPill({required this.ovr});
 
-  final String label;
-  final double value;
-  final Color color;
+  final int ovr;
 
   @override
   Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.62),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: GameColors.neon.withValues(alpha: 0.55)),
+      ),
+      child: Text(
+        '$ovr',
+        style: const TextStyle(
+          color: GameColors.neon,
+          fontWeight: FontWeight.w900,
+          fontSize: 18,
+          height: 1,
+        ),
+      ),
+    );
+  }
+}
+
+class _RolePill extends StatelessWidget {
+  const _RolePill({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.62),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.white24),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: _squadNameColor,
+          fontWeight: FontWeight.w900,
+          fontSize: 11,
+          letterSpacing: 0.4,
+          height: 1,
+        ),
+      ),
+    );
+  }
+}
+
+class _MiniStatRow extends StatelessWidget {
+  const _MiniStatRow({
+    required this.batting,
+    required this.bowling,
+    required this.fielding,
+  });
+
+  final int batting;
+  final int bowling;
+  final int fielding;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget stat(String label, int value, Color color) {
+      return Expanded(
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 5),
+          decoration: BoxDecoration(
+            color: const Color(0xFF181818),
+            borderRadius: BorderRadius.circular(7),
+            border: Border.all(color: GameColors.cardBorder),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  color: _squadSubColor,
+                  fontSize: 8,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                '$value',
+                style: TextStyle(
+                  color: color,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Row(
       children: [
-        SizedBox(
-          width: 30,
-          child: Text(
-            label,
-            style: const TextStyle(
-              color: _squadSubColor,
-              fontSize: 10,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ),
-        Expanded(
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(2),
-            child: LinearProgressIndicator(
-              value: value.clamp(0.0, 1.0),
-              minHeight: 5,
-              backgroundColor: const Color(0xFF2A2A2A),
-              valueColor: AlwaysStoppedAnimation<Color>(color),
-            ),
-          ),
-        ),
+        stat('BAT', batting, const Color(0xFF64B5F6)),
+        const SizedBox(width: 4),
+        stat('BWL', bowling, const Color(0xFFFFB74D)),
+        const SizedBox(width: 4),
+        stat('FLD', fielding, const Color(0xFF81C784)),
       ],
     );
   }

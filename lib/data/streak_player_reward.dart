@@ -1,6 +1,7 @@
 import 'models/catalog_player.dart';
 import 'models/cricket_player.dart';
 import 'models/player_attributes.dart';
+import 'models/player_role.dart';
 import 'models/player_tier.dart';
 
 /// Every N consecutive daily-claim days, user earns a trainee for their squad (or coins if squad is full).
@@ -9,7 +10,8 @@ const int kStreakPlayerBonusInterval = 4;
 const int kStreakBonusCoinsWhenSquadFull = 175;
 
 bool qualifiesForStreakPlayerBonus(int nextStreakAfterClaim) {
-  return nextStreakAfterClaim > 0 && nextStreakAfterClaim % kStreakPlayerBonusInterval == 0;
+  return nextStreakAfterClaim > 0 &&
+      nextStreakAfterClaim % kStreakPlayerBonusInterval == 0;
 }
 
 /// Smallest OVR cap used in-app for generated recruits (matches trainable custom cards).
@@ -22,6 +24,12 @@ CricketPlayer _defaultStreakRecruit({
     displayName: 'Streak recruit (day $streakDay)',
     isRealPlayer: false,
     playerTier: PlayerTier.free,
+    role: PlayerRole.allRounder,
+    country: 'Generated',
+    battingStyle: 'Right-hand bat',
+    bowlingStyle: 'Right-arm medium',
+    generatedBio:
+        'A daily streak recruit generated for consistent Wicket Wars play.',
     attributes: const PlayerAttributes(
       batting: 48,
       bowling: 46,
@@ -77,12 +85,17 @@ Future<StreakPlayerBonusOutcome> applyStreakPlayerBonus({
 
   final catalog = await loadCatalog();
   final template = _firstTrainableTemplate(catalog);
-  final id = 'streak_${nextStreakAfterClaim}_${DateTime.now().millisecondsSinceEpoch}';
+  final id =
+      'streak_${nextStreakAfterClaim}_${DateTime.now().millisecondsSinceEpoch}';
   final CricketPlayer player;
   if (template != null) {
-    player = template.toSquadPlayer(squadPlayerId: id).copyWith(
-      displayName: '${template.displayName} · S$nextStreakAfterClaim',
-    );
+    player = template
+        .toSquadPlayer(squadPlayerId: id)
+        .copyWith(
+          displayName: '${template.displayName} · S$nextStreakAfterClaim',
+          generatedBio:
+              'Earned as a day $nextStreakAfterClaim daily streak reward.',
+        );
   } else {
     player = _defaultStreakRecruit(id: id, streakDay: nextStreakAfterClaim);
   }

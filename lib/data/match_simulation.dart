@@ -19,6 +19,11 @@ class SimBallContext {
     required this.runsScoredThisInnings,
     required this.isChaseInnings,
     this.chaseTarget,
+    this.battingRating = 60,
+    this.bowlingRating = 60,
+    this.fieldingRating = 60,
+    this.staminaRating = 60,
+    this.consistencyRating = 60,
   });
 
   final PitchCondition pitch;
@@ -27,6 +32,11 @@ class SimBallContext {
   final int runsScoredThisInnings;
   final bool isChaseInnings;
   final int? chaseTarget;
+  final int battingRating;
+  final int bowlingRating;
+  final int fieldingRating;
+  final int staminaRating;
+  final int consistencyRating;
 
   bool get isDeathOvers => legalBallsInInnings >= 90;
 
@@ -50,6 +60,21 @@ SimBallResult simulateBall(SimBallContext ctx, Random rng) {
   var p4 = 0.10;
   var p6 = 0.08;
   var pW = 0.04;
+
+  final battingEdge = ((ctx.battingRating - ctx.bowlingRating) / 100).clamp(
+    -0.5,
+    0.5,
+  );
+  final fieldingEdge = ((ctx.fieldingRating - 60) / 100).clamp(-0.4, 0.4);
+  final staminaEdge = ((ctx.staminaRating - 60) / 100).clamp(-0.4, 0.4);
+  final consistencyEdge = ((ctx.consistencyRating - 60) / 100).clamp(-0.4, 0.4);
+
+  pDot *= 1 - battingEdge * 0.35 - consistencyEdge * 0.12;
+  p1 *= 1 + consistencyEdge * 0.10;
+  p2 *= 1 + battingEdge * 0.12 + staminaEdge * 0.10;
+  p4 *= 1 + battingEdge * 0.55;
+  p6 *= 1 + battingEdge * 0.70;
+  pW *= 1 - battingEdge * 0.45 + fieldingEdge * 0.22 - consistencyEdge * 0.12;
 
   switch (ctx.pitch) {
     case PitchCondition.flat:

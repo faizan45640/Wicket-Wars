@@ -17,6 +17,14 @@ String authErrorMessage(Object error) {
         return 'Password is too weak. Use at least 6 characters.';
       case 'operation-not-allowed':
         return 'Email/password sign-in is not enabled for this project.';
+      case 'too-many-requests':
+        return 'Too many attempts. Please wait a moment and try again.';
+      case 'network-request-failed':
+        return 'Network error. Check your connection and try again.';
+      case 'missing-email':
+        return 'Enter your email address.';
+      case 'requires-recent-login':
+        return 'Please log in again before changing this account.';
       default:
         return error.message ?? 'Authentication failed.';
     }

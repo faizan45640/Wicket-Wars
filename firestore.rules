@@ -1,0 +1,51 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    match /users/{uid} {
+      allow read: if signedIn();
+      allow create, update: if isSelf(uid);
+      allow delete: if false;
+
+      match /players/{playerId} {
+        allow read, write: if isSelf(uid);
+      }
+
+      match /matchHistory/{matchId} {
+        allow read, write: if isSelf(uid);
+      }
+
+      match /{document=**} {
+        allow read, write: if isSelf(uid);
+      }
+    }
+
+    match /leaderboard/{uid} {
+      allow read: if signedIn();
+      allow create, update: if isSelf(uid);
+      allow delete: if false;
+    }
+
+    match /players_catalog/{playerId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /matchRooms/{roomId} {
+      allow read: if signedIn();
+      allow create, update, delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../data/models/cricket_player.dart';
 import '../data/models/match_room.dart';
+import '../data/models/pitch_condition.dart';
 import '../data/providers.dart';
 import '../theme/game_colors.dart';
 import '../widgets/auth_error_banner.dart';
 import '../widgets/game_bottom_nav.dart';
+import '../widgets/monetization_banner.dart';
 
 class OnlineMatchScreen extends ConsumerStatefulWidget {
   const OnlineMatchScreen({super.key});
@@ -20,6 +23,7 @@ class _OnlineMatchScreenState extends ConsumerState<OnlineMatchScreen> {
   var _busy = false;
   String? _error;
   MatchRoom? _activeRoom;
+  final Set<String> _selectedXi = {};
 
   @override
   void dispose() {
@@ -29,6 +33,21 @@ class _OnlineMatchScreenState extends ConsumerState<OnlineMatchScreen> {
 
   void _clearError() => setState(() => _error = null);
 
+  String _friendlyFirebaseError(Object error) {
+    final text = error.toString();
+    if (text.contains('permission-denied') ||
+        text.contains('PERMISSION_DENIED')) {
+      return 'Firebase permission denied. Make sure Firestore rules are deployed and you are signed in.';
+    }
+    if (text.contains('not-found') || text.contains('NOT_FOUND')) {
+      return 'Match backend is not deployed yet. Deploy the Firebase functions first.';
+    }
+    if (text.contains('unavailable') || text.contains('UNAVAILABLE')) {
+      return 'Firebase is temporarily unavailable. Check internet and try again.';
+    }
+    return 'Could not complete match action. Please try again.';
+  }
+
   Future<void> _createRoom() async {
     final uid = ref.read(currentUidProvider);
     if (uid == null) return;
@@ -37,12 +56,17 @@ class _OnlineMatchScreenState extends ConsumerState<OnlineMatchScreen> {
       _error = null;
     });
     try {
-      final room = await ref.read(matchRepositoryProvider).createRoom(hostUid: uid);
+      final room = await ref
+          .read(matchRepositoryProvider)
+          .createRoom(hostUid: uid);
       if (!mounted) return;
-      setState(() => _activeRoom = room);
+      setState(() {
+        _activeRoom = room;
+        _selectedXi.clear();
+      });
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = e.toString());
+      setState(() => _error = _friendlyFirebaseError(e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -61,22 +85,23 @@ class _OnlineMatchScreenState extends ConsumerState<OnlineMatchScreen> {
       _error = null;
     });
     try {
-      final existing = await ref.read(matchRepositoryProvider).getRoom(code);
-      if (existing == null) {
-        setState(() => _error = 'No room with that code.');
-        return;
-      }
-      if (existing.hostUid == uid) {
-        setState(() => _error = 'You are the host — share the code or start.');
-        return;
-      }
-      await ref.read(matchRepositoryProvider).joinRoom(roomCode: code, guestUid: uid);
-      final updated = await ref.read(matchRepositoryProvider).getRoom(code);
+      await ref
+          .read(matchRepositoryProvider)
+          .joinRoom(roomCode: code, guestUid: uid);
       if (!mounted) return;
-      setState(() => _activeRoom = updated);
+      setState(() {
+        _activeRoom = MatchRoom(
+          roomId: code,
+          roomCode: code,
+          status: MatchRoomStatus.selectingXi,
+          pitch: PitchCondition.balanced,
+          guestUid: uid,
+        );
+        _selectedXi.clear();
+      });
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = e.toString());
+      setState(() => _error = _friendlyFirebaseError(e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -86,12 +111,47 @@ class _OnlineMatchScreenState extends ConsumerState<OnlineMatchScreen> {
     context.push('/match/live/$roomId');
   }
 
+  Future<void> _lockSelectedXi(
+    MatchRoom room,
+    List<CricketPlayer> squad,
+  ) async {
+    final selectedIds = _effectiveSelectedIds(squad);
+    if (selectedIds.length != 11) {
+      setState(() => _error = 'Select exactly 11 available players.');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await ref
+          .read(matchRepositoryProvider)
+          .lockPlayingXi(roomId: room.roomId, playerIds: selectedIds);
+    } catch (e) {
+      if (mounted) setState(() => _error = _friendlyFirebaseError(e));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  List<String> _effectiveSelectedIds(List<CricketPlayer> squad) {
+    final available = [...squad.where((p) => p.availableForXi)]
+      ..sort((a, b) => b.attributes.overall.compareTo(a.attributes.overall));
+    final availableIds = available.map((p) => p.id).toSet();
+    final explicit = _selectedXi.where(availableIds.contains).toList();
+    if (explicit.isNotEmpty) return explicit;
+    return available.take(11).map((p) => p.id).toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     final uid = ref.watch(currentUidProvider);
     final room = _activeRoom;
+    final squadAsync = uid != null ? ref.watch(squadProvider(uid)) : null;
 
-    final roomWatch = room != null ? ref.watch(matchRoomProvider(room.roomId)) : null;
+    final roomWatch =
+        room != null ? ref.watch(matchRoomProvider(room.roomId)) : null;
     final liveRoom = roomWatch?.valueOrNull ?? room;
 
     return Scaffold(
@@ -101,7 +161,11 @@ class _OnlineMatchScreenState extends ConsumerState<OnlineMatchScreen> {
         elevation: 0,
         scrolledUnderElevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.chevron_left, color: GameColors.neon, size: 32),
+          icon: const Icon(
+            Icons.chevron_left,
+            color: GameColors.neon,
+            size: 32,
+          ),
           onPressed: () => context.go('/'),
         ),
         title: const Text(
@@ -119,7 +183,10 @@ class _OnlineMatchScreenState extends ConsumerState<OnlineMatchScreen> {
           padding: const EdgeInsets.all(20),
           children: [
             if (uid == null)
-              const Text('Sign in required.', style: TextStyle(color: Colors.white70))
+              const Text(
+                'Sign in required.',
+                style: TextStyle(color: Colors.white70),
+              )
             else ...[
               if (_error != null) ...[
                 AuthErrorBanner(
@@ -151,7 +218,9 @@ class _OnlineMatchScreenState extends ConsumerState<OnlineMatchScreen> {
                     labelStyle: TextStyle(color: GameColors.muted),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: GameColors.cardBorder),
+                      borderSide: const BorderSide(
+                        color: GameColors.cardBorder,
+                      ),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -171,6 +240,8 @@ class _OnlineMatchScreenState extends ConsumerState<OnlineMatchScreen> {
                   ),
                   child: const Text('JOIN WITH CODE'),
                 ),
+                const SizedBox(height: 18),
+                const Center(child: MonetizationBanner()),
               ] else ...[
                 Container(
                   padding: const EdgeInsets.all(16),
@@ -202,10 +273,14 @@ class _OnlineMatchScreenState extends ConsumerState<OnlineMatchScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        liveRoom.guestUid != null && liveRoom.guestUid!.isNotEmpty
+                        liveRoom.guestUid != null &&
+                                liveRoom.guestUid!.isNotEmpty
                             ? 'Guest joined — ready.'
                             : 'Waiting for guest to join…',
-                        style: const TextStyle(color: Colors.white70, fontSize: 14),
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 14,
+                        ),
                       ),
                     ],
                   ),
@@ -219,39 +294,32 @@ class _OnlineMatchScreenState extends ConsumerState<OnlineMatchScreen> {
                 const SizedBox(height: 12),
                 _lobbyCard(
                   label: 'Guest',
-                  name: liveRoom.guestUid != null && liveRoom.guestUid!.isNotEmpty
-                      ? (liveRoom.guestUid == uid ? 'You' : 'Joined')
-                      : 'Waiting…',
-                  ready: liveRoom.guestUid != null && liveRoom.guestUid!.isNotEmpty,
+                  name:
+                      liveRoom.guestUid != null && liveRoom.guestUid!.isNotEmpty
+                          ? (liveRoom.guestUid == uid ? 'You' : 'Joined')
+                          : 'Waiting…',
+                  ready:
+                      liveRoom.guestUid != null &&
+                      liveRoom.guestUid!.isNotEmpty,
                 ),
                 const SizedBox(height: 24),
-                FilledButton(
-                  onPressed: _busy ||
-                          liveRoom.guestUid == null ||
-                          liveRoom.guestUid!.isEmpty
-                      ? null
-                      : () => _goLive(liveRoom.roomId),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: GameColors.neon,
-                    foregroundColor: GameColors.onNeonButton,
-                    padding: const EdgeInsets.symmetric(vertical: 20),
-                  ),
-                  child: const Text(
-                    'START LIVE MATCH',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
-                  ),
-                ),
+                if (liveRoom.guestUid != null && liveRoom.guestUid!.isNotEmpty)
+                  _xiSelectionSection(liveRoom, uid, squadAsync),
                 const SizedBox(height: 12),
                 TextButton(
-                  onPressed: _busy
-                      ? null
-                      : () => setState(() {
+                  onPressed:
+                      _busy
+                          ? null
+                          : () => setState(() {
                             _activeRoom = null;
                             _joinCode.clear();
+                            _selectedXi.clear();
                           }),
                   child: Text(
                     'Leave lobby',
-                    style: TextStyle(color: GameColors.muted.withValues(alpha: 0.9)),
+                    style: TextStyle(
+                      color: GameColors.muted.withValues(alpha: 0.9),
+                    ),
                   ),
                 ),
               ],
@@ -260,6 +328,139 @@ class _OnlineMatchScreenState extends ConsumerState<OnlineMatchScreen> {
         ),
       ),
       bottomNavigationBar: const GameBottomNav(selectedIndex: 2),
+    );
+  }
+
+  Widget _xiSelectionSection(
+    MatchRoom room,
+    String uid,
+    AsyncValue<List<CricketPlayer>>? squadAsync,
+  ) {
+    final youHost = room.hostUid == uid;
+    final myLocked = youHost ? room.hostXiLocked : room.guestXiLocked;
+    final bothLocked = room.hostXiLocked && room.guestXiLocked;
+    if (bothLocked) {
+      return FilledButton(
+        onPressed: _busy ? null : () => _goLive(room.roomId),
+        style: FilledButton.styleFrom(
+          backgroundColor: GameColors.neon,
+          foregroundColor: GameColors.onNeonButton,
+          padding: const EdgeInsets.symmetric(vertical: 20),
+        ),
+        child: const Text(
+          'START LIVE MATCH',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+        ),
+      );
+    }
+    if (myLocked) {
+      return const Text(
+        'Your XI is locked. Waiting for the other player.',
+        style: TextStyle(color: Colors.white70),
+      );
+    }
+    if (squadAsync == null) {
+      return const Text(
+        'Squad unavailable.',
+        style: TextStyle(color: Colors.white70),
+      );
+    }
+    return squadAsync.when(
+      loading:
+          () => const Center(
+            child: CircularProgressIndicator(color: GameColors.neon),
+          ),
+      error:
+          (e, _) => Text(
+            'Could not load squad: $e',
+            style: TextStyle(color: Colors.red.shade200),
+          ),
+      data: (squad) {
+        final available = [
+          ...squad.where((p) => p.availableForXi),
+        ]..sort((a, b) => b.attributes.overall.compareTo(a.attributes.overall));
+        final selectedIds = _effectiveSelectedIds(available).toSet();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'SELECT PLAYING XI',
+                    style: TextStyle(
+                      color: GameColors.neon,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+                Text(
+                  '${selectedIds.length}/11',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            ...available.take(15).map((p) {
+              final selected = selectedIds.contains(p.id);
+              return CheckboxListTile(
+                value: selected,
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                activeColor: GameColors.neon,
+                checkColor: GameColors.onNeonButton,
+                title: Text(
+                  p.displayName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white),
+                ),
+                subtitle: Text(
+                  '${p.roleLabel} · OVR ${p.attributes.overall}',
+                  style: TextStyle(color: GameColors.muted),
+                ),
+                onChanged:
+                    _busy
+                        ? null
+                        : (value) {
+                          setState(() {
+                            if (_selectedXi.isEmpty) {
+                              _selectedXi.addAll(selectedIds);
+                            }
+                            if (value == true) {
+                              if (_selectedXi.length < 11 || selected) {
+                                _selectedXi.add(p.id);
+                              }
+                            } else {
+                              _selectedXi.remove(p.id);
+                            }
+                          });
+                        },
+              );
+            }),
+            const SizedBox(height: 12),
+            FilledButton(
+              onPressed:
+                  _busy || selectedIds.length != 11
+                      ? null
+                      : () => _lockSelectedXi(room, available),
+              style: FilledButton.styleFrom(
+                backgroundColor: GameColors.neon,
+                foregroundColor: GameColors.onNeonButton,
+                padding: const EdgeInsets.symmetric(vertical: 18),
+              ),
+              child: Text(
+                _busy ? 'LOCKING...' : 'LOCK SELECTED XI',
+                style: const TextStyle(fontWeight: FontWeight.w900),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -303,7 +504,11 @@ class _OnlineMatchScreenState extends ConsumerState<OnlineMatchScreen> {
                 children: [
                   Text(
                     label,
-                    style: TextStyle(color: GameColors.muted, fontSize: 12, fontWeight: FontWeight.w700),
+                    style: TextStyle(
+                      color: GameColors.muted,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                   const SizedBox(height: 4),
                   Text(

@@ -3,11 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import '../data/daily_reward.dart';
 import '../data/models/user_profile.dart';
 import '../data/providers.dart';
 import '../theme/game_colors.dart';
 import '../widgets/daily_reward_dialog.dart';
 import '../widgets/game_bottom_nav.dart';
+import '../widgets/monetization_banner.dart';
 import '../widgets/training_player_picker.dart';
 
 /// Dark cricket dashboard — matches Wicket Wars home mockup.
@@ -16,22 +18,16 @@ class HomeScreen extends ConsumerWidget {
 
   static final NumberFormat _coinFormat = NumberFormat.decimalPattern('en_US');
 
-  static bool _canClaimDaily(UserProfile p) {
-    final last = p.lastDailyRewardClaimAt;
-    if (last == null) return true;
-    final t = DateTime.now();
-    final today = DateTime(t.year, t.month, t.day);
-    final lastDay = DateTime(last.year, last.month, last.day);
-    return today.isAfter(lastDay);
-  }
-
   static String _squadSubtitle(WidgetRef ref) {
     final uid = ref.watch(currentUidProvider);
     if (uid == null) return 'Sign in';
     final squad = ref.watch(squadProvider(uid));
     return squad.maybeWhen(
-      data: (s) =>
-          s.isEmpty ? '0 players · open squad to sync from Firestore' : '${s.length} player(s)',
+      data:
+          (s) =>
+              s.isEmpty
+                  ? '0 players · open squad to sync from Firestore'
+                  : '${s.length} player(s)',
       loading: () => 'Loading squad…',
       orElse: () => '…',
     );
@@ -40,6 +36,14 @@ class HomeScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final profileAsync = ref.watch(userProfileProvider);
+    ref.listen(userProfileProvider, (previous, next) {
+      final profile = next.valueOrNull;
+      if (profile != null && !profile.starterPackOpened) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (context.mounted) context.go('/starter-pack');
+        });
+      }
+    });
     return Scaffold(
       backgroundColor: GameColors.bg,
       appBar: AppBar(
@@ -66,62 +70,60 @@ class HomeScreen extends ConsumerWidget {
       ),
       body: SafeArea(
         top: false,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-              child: Card(
-                color: GameColors.card,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(18),
-                  side: const BorderSide(color: GameColors.cardBorder),
+            Card(
+              color: GameColors.card,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
+                side: const BorderSide(color: GameColors.cardBorder),
+              ),
+              elevation: 0,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
                 ),
-                elevation: 0,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  child: _buildProfileSection(context, profileAsync),
-                ),
+                child: _buildProfileSection(context, profileAsync),
               ),
             ),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-                children: [
-                  _buildPlayMatchButton(context),
-                  const SizedBox(height: 12),
-                  _buildMenuButton(
-                    icon: Icons.groups_outlined,
-                    title: 'MY SQUAD',
-                    subtitle: _squadSubtitle(ref),
-                    showChevron: true,
-                    onTap: () => context.go('/squad'),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildMenuButton(
-                    icon: Icons.fitness_center,
-                    title: 'TRAINING',
-                    subtitle: 'Improve Skills',
-                    newBadge: true,
-                    onTap: () => showTrainingPlayerPicker(context, ref),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildMenuButton(
-                    icon: Icons.emoji_events_outlined,
-                    title: 'LEADERBOARD',
-                    subtitle: profileAsync.maybeWhen(
-                      data: (p) =>
-                          '${_coinFormat.format(p?.rankingPoints ?? 0)} pts · tap to view global',
-                      orElse: () => 'Global standings',
-                    ),
-                    showChevron: true,
-                    onTap: () => context.go('/leaderboard'),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildDailyRewardCard(context, ref),
-                ],
-              ),
+            const SizedBox(height: 16),
+            _buildPlayMatchButton(context),
+            const SizedBox(height: 12),
+            _buildMenuButton(
+              icon: Icons.groups_outlined,
+              title: 'MY SQUAD',
+              subtitle: _squadSubtitle(ref),
+              showChevron: true,
+              onTap: () => context.go('/squad'),
             ),
+            const SizedBox(height: 12),
+            _buildMenuButton(
+              icon: Icons.fitness_center,
+              title: 'TRAINING',
+              subtitle: 'Improve Skills',
+              newBadge: true,
+              onTap: () => showTrainingPlayerPicker(context, ref),
+            ),
+            const SizedBox(height: 12),
+            _buildMenuButton(
+              icon: Icons.emoji_events_outlined,
+              title: 'LEADERBOARD',
+              subtitle: profileAsync.maybeWhen(
+                data:
+                    (p) =>
+                        '${_coinFormat.format(p?.rankingPoints ?? 0)} pts · tap to view global',
+                orElse: () => 'Global standings',
+              ),
+              showChevron: true,
+              onTap: () => context.go('/leaderboard'),
+            ),
+            const SizedBox(height: 12),
+            _buildDailyRewardCard(context, ref),
+            const SizedBox(height: 16),
+            const Center(child: MonetizationBanner()),
           ],
         ),
       ),
@@ -134,23 +136,28 @@ class HomeScreen extends ConsumerWidget {
     AsyncValue<UserProfile?> profileAsync,
   ) {
     return profileAsync.when(
-      loading: () => const Padding(
-        padding: EdgeInsets.symmetric(vertical: 24),
-        child: Center(
-          child: SizedBox(
-            width: 28,
-            height: 28,
-            child: CircularProgressIndicator(strokeWidth: 2, color: GameColors.neon),
+      loading:
+          () => const Padding(
+            padding: EdgeInsets.symmetric(vertical: 24),
+            child: Center(
+              child: SizedBox(
+                width: 28,
+                height: 28,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: GameColors.neon,
+                ),
+              ),
+            ),
           ),
-        ),
-      ),
-      error: (e, _) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Text(
-          'Could not load profile: $e',
-          style: TextStyle(color: Colors.red.shade200, fontSize: 13),
-        ),
-      ),
+      error:
+          (e, _) => Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Text(
+              'Could not load profile: $e',
+              style: TextStyle(color: Colors.red.shade200, fontSize: 13),
+            ),
+          ),
       data: (p) {
         final displayName = p?.displayName ?? 'Player';
         final coins = p?.coins ?? 0;
@@ -194,7 +201,11 @@ class HomeScreen extends ConsumerWidget {
                   const SizedBox(height: 10),
                   Row(
                     children: [
-                      Icon(Icons.monetization_on, color: Colors.amber.shade600, size: 18),
+                      Icon(
+                        Icons.monetization_on,
+                        color: Colors.amber.shade600,
+                        size: 18,
+                      ),
                       const SizedBox(width: 8),
                       Text(
                         'COINS: ${_coinFormat.format(coins)}',
@@ -209,7 +220,11 @@ class HomeScreen extends ConsumerWidget {
                   const SizedBox(height: 6),
                   Row(
                     children: [
-                      Icon(Icons.star_border_rounded, color: GameColors.neon.withValues(alpha: 0.9), size: 18),
+                      Icon(
+                        Icons.star_border_rounded,
+                        color: GameColors.neon.withValues(alpha: 0.9),
+                        size: 18,
+                      ),
                       const SizedBox(width: 8),
                       Text(
                         'RANKING POINTS: ${_coinFormat.format(rankingPoints)}',
@@ -274,7 +289,11 @@ class HomeScreen extends ConsumerWidget {
               color: GameColors.onNeonButton,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Icon(Icons.sports_cricket, color: GameColors.neon, size: 28),
+            child: const Icon(
+              Icons.sports_cricket,
+              color: GameColors.neon,
+              size: 28,
+            ),
           ),
         ],
       ),
@@ -338,21 +357,30 @@ class HomeScreen extends ConsumerWidget {
               ),
               child: const Text(
                 'NEW',
-                style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w800),
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
             )
           else if (showChevron)
-            Icon(Icons.chevron_right, color: GameColors.muted.withValues(alpha: 0.7)),
+            Icon(
+              Icons.chevron_right,
+              color: GameColors.muted.withValues(alpha: 0.7),
+            ),
         ],
       ),
     );
   }
 
   Widget _buildDailyRewardCard(BuildContext context, WidgetRef ref) {
-    final subtitle = ref.watch(userProfileProvider).maybeWhen(
+    final subtitle = ref
+        .watch(userProfileProvider)
+        .maybeWhen(
           data: (p) {
             if (p == null) return 'Sign in';
-            if (_canClaimDaily(p)) return 'Tap to claim coins';
+            if (canClaimDailyReward(p)) return 'Tap to claim coins';
             return 'Next reward tomorrow';
           },
           orElse: () => '…',
@@ -372,7 +400,9 @@ class HomeScreen extends ConsumerWidget {
             foregroundColor: Colors.white,
             elevation: 0,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-            shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.zero,
+            ),
           ),
           child: Row(
             children: [
@@ -406,7 +436,10 @@ class HomeScreen extends ConsumerWidget {
               Container(
                 width: 10,
                 height: 10,
-                decoration: const BoxDecoration(color: GameColors.neon, shape: BoxShape.circle),
+                decoration: const BoxDecoration(
+                  color: GameColors.neon,
+                  shape: BoxShape.circle,
+                ),
               ),
             ],
           ),

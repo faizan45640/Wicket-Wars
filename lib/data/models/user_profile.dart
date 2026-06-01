@@ -14,6 +14,7 @@ class UserProfile {
     this.createdAt,
     this.dailyStreak = 0,
     this.totalRunsScored = 0,
+    this.starterPackOpened = false,
   });
 
   final String uid;
@@ -34,21 +35,25 @@ class UserProfile {
   /// Career runs for profile stats (updated when matches complete).
   final int totalRunsScored;
 
+  /// New accounts reveal a 15-player starter pack before normal play.
+  final bool starterPackOpened;
+
   Map<String, dynamic> toMap() => {
-        'uid': uid,
-        'displayName': displayName,
-        'email': email,
-        'coins': coins,
-        'rankingPoints': rankingPoints,
-        'leagueTier': leagueTier,
-        'wins': wins,
-        'losses': losses,
-        'matchesPlayed': matchesPlayed,
-        'lastDailyRewardClaimAt': lastDailyRewardClaimAt?.toUtc().toIso8601String(),
-        'createdAt': createdAt?.toUtc().toIso8601String(),
-        'dailyStreak': dailyStreak,
-        'totalRunsScored': totalRunsScored,
-      };
+    'uid': uid,
+    'displayName': displayName,
+    'email': email,
+    'coins': coins,
+    'rankingPoints': rankingPoints,
+    'leagueTier': leagueTier,
+    'wins': wins,
+    'losses': losses,
+    'matchesPlayed': matchesPlayed,
+    'lastDailyRewardClaimAt': lastDailyRewardClaimAt?.toUtc().toIso8601String(),
+    'createdAt': createdAt?.toUtc().toIso8601String(),
+    'dailyStreak': dailyStreak,
+    'totalRunsScored': totalRunsScored,
+    'starterPackOpened': starterPackOpened,
+  };
 
   factory UserProfile.fromMap(Map<String, dynamic> map) {
     return UserProfile(
@@ -61,14 +66,19 @@ class UserProfile {
       wins: (map['wins'] as num?)?.round() ?? 0,
       losses: (map['losses'] as num?)?.round() ?? 0,
       matchesPlayed: (map['matchesPlayed'] as num?)?.round() ?? 0,
-      lastDailyRewardClaimAt: map['lastDailyRewardClaimAt'] != null
-          ? DateTime.parse(map['lastDailyRewardClaimAt'] as String).toLocal()
-          : null,
-      createdAt: map['createdAt'] != null
-          ? DateTime.parse(map['createdAt'] as String).toLocal()
-          : null,
+      lastDailyRewardClaimAt:
+          map['lastDailyRewardClaimAt'] != null
+              ? DateTime.parse(
+                map['lastDailyRewardClaimAt'] as String,
+              ).toLocal()
+              : null,
+      createdAt:
+          map['createdAt'] != null
+              ? DateTime.parse(map['createdAt'] as String).toLocal()
+              : null,
       dailyStreak: (map['dailyStreak'] as num?)?.round() ?? 0,
       totalRunsScored: (map['totalRunsScored'] as num?)?.round() ?? 0,
+      starterPackOpened: map['starterPackOpened'] as bool? ?? false,
     );
   }
 
@@ -86,6 +96,7 @@ class UserProfile {
     DateTime? createdAt,
     int? dailyStreak,
     int? totalRunsScored,
+    bool? starterPackOpened,
   }) {
     return UserProfile(
       uid: uid ?? this.uid,
@@ -97,10 +108,12 @@ class UserProfile {
       wins: wins ?? this.wins,
       losses: losses ?? this.losses,
       matchesPlayed: matchesPlayed ?? this.matchesPlayed,
-      lastDailyRewardClaimAt: lastDailyRewardClaimAt ?? this.lastDailyRewardClaimAt,
+      lastDailyRewardClaimAt:
+          lastDailyRewardClaimAt ?? this.lastDailyRewardClaimAt,
       createdAt: createdAt ?? this.createdAt,
       dailyStreak: dailyStreak ?? this.dailyStreak,
       totalRunsScored: totalRunsScored ?? this.totalRunsScored,
+      starterPackOpened: starterPackOpened ?? this.starterPackOpened,
     );
   }
 }

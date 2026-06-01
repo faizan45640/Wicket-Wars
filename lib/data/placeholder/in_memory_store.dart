@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import '../models/cricket_player.dart';
@@ -6,6 +7,7 @@ import '../models/match_room.dart';
 import '../models/match_summary.dart';
 import '../models/pitch_condition.dart';
 import '../models/player_attributes.dart';
+import '../models/player_role.dart';
 import '../models/player_tier.dart';
 import '../models/user_profile.dart';
 
@@ -23,7 +25,9 @@ final class InMemoryStore {
   late Map<String, CricketPlayer> demoPlayersById;
   late List<LeaderboardEntry> demoLeaderboard;
   final Map<String, MatchRoom> roomsById = {};
+  final Map<String, StreamController<MatchRoom?>> _roomControllers = {};
   final Map<String, List<MatchSummary>> matchHistoryByUid = {};
+  final Map<String, UserProfile> extraProfilesByUid = {};
 
   /// Squads for non-demo UIDs (widget tests, offline streak bonuses, etc.).
   final Map<String, Map<String, CricketPlayer>> extraSquadsByUid = {};
@@ -46,6 +50,7 @@ final class InMemoryStore {
       createdAt: DateTime.utc(2025, 1, 1),
       dailyStreak: 0,
       totalRunsScored: 0,
+      starterPackOpened: true,
     );
 
     demoPlayersById = {
@@ -55,6 +60,32 @@ final class InMemoryStore {
           displayName: 'Squad Player ${i + 1}',
           isRealPlayer: i.isEven,
           playerTier: i.isEven ? PlayerTier.premium : PlayerTier.free,
+          role: PlayerRole.infer(
+            batting: 55 + i * 3,
+            bowling: 50 + (i % 5) * 4,
+            wicketKeeper: i == 4,
+          ),
+          country:
+              const [
+                'Pakistan',
+                'India',
+                'Australia',
+                'England',
+                'Sri Lanka',
+                'South Africa',
+                'New Zealand',
+                'Bangladesh',
+                'Afghanistan',
+                'West Indies',
+                'UAE',
+              ][i],
+          battingStyle: i.isEven ? 'Right-hand bat' : 'Left-hand bat',
+          bowlingStyle:
+              i == 4
+                  ? 'Wicket keeper'
+                  : i % 3 == 0
+                  ? 'Right-arm fast'
+                  : 'Right-arm spin',
           avatarUrl: null,
           cardImageAsset: null,
           attributes: PlayerAttributes(
@@ -68,7 +99,13 @@ final class InMemoryStore {
     };
 
     demoLeaderboard = [
-      LeaderboardEntry(uid: 'u1', displayName: 'TopCoach', rankingPoints: 12000, wins: 200, rank: 1),
+      LeaderboardEntry(
+        uid: 'u1',
+        displayName: 'TopCoach',
+        rankingPoints: 12000,
+        wins: 200,
+        rank: 1,
+      ),
       LeaderboardEntry(
         uid: demoUid,
         displayName: demoProfile.displayName,
@@ -76,7 +113,13 @@ final class InMemoryStore {
         wins: demoProfile.wins,
         rank: 4210,
       ),
-      LeaderboardEntry(uid: 'u2', displayName: 'SpinnerKing', rankingPoints: 800, wins: 12, rank: 12050),
+      LeaderboardEntry(
+        uid: 'u2',
+        displayName: 'SpinnerKing',
+        rankingPoints: 800,
+        wins: 12,
+        rank: 12050,
+      ),
     ];
 
     matchHistoryByUid[demoUid] = [];
@@ -87,7 +130,10 @@ final class InMemoryStore {
     return List.generate(6, (_) => chars[_random.nextInt(chars.length)]).join();
   }
 
-  MatchRoom newRoom({required String hostUid, PitchCondition pitch = PitchCondition.balanced}) {
+  MatchRoom newRoom({
+    required String hostUid,
+    PitchCondition pitch = PitchCondition.balanced,
+  }) {
     final code = generateRoomCode().toUpperCase();
     final room = MatchRoom(
       roomId: code,
@@ -97,6 +143,24 @@ final class InMemoryStore {
       hostUid: hostUid,
     );
     roomsById[code] = room;
+    notifyRoomChanged(code);
     return room;
+  }
+
+  Stream<MatchRoom?> watchRoom(String roomId) {
+    final controller = _roomControllers.putIfAbsent(
+      roomId,
+      () => StreamController<MatchRoom?>.broadcast(),
+    );
+    return (() async* {
+      yield roomsById[roomId];
+      yield* controller.stream;
+    })();
+  }
+
+  void notifyRoomChanged(String roomId) {
+    final controller = _roomControllers[roomId];
+    if (controller == null || controller.isClosed) return;
+    controller.add(roomsById[roomId]);
   }
 }

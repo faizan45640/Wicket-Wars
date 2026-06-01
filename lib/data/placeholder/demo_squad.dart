@@ -1,5 +1,6 @@
 import '../models/cricket_player.dart';
 import '../models/player_attributes.dart';
+import '../models/player_role.dart';
 import '../models/player_tier.dart';
 
 /// Same squad used on [SquadScreen] and the training player picker (IDs must match).
@@ -18,6 +19,29 @@ List<CricketPlayer> buildDemoSquad() {
       displayName: 'Player $l',
       isRealPlayer: i.isEven,
       playerTier: i.isEven ? PlayerTier.premium : PlayerTier.free,
+      role: PlayerRole.infer(batting: bat, bowling: bwl, wicketKeeper: i == 4),
+      country:
+          const [
+            'Pakistan',
+            'India',
+            'Australia',
+            'England',
+            'Sri Lanka',
+            'South Africa',
+            'New Zealand',
+            'Bangladesh',
+            'Afghanistan',
+            'West Indies',
+            'UAE',
+            'Nepal',
+          ][i],
+      battingStyle: i.isEven ? 'Right-hand bat' : 'Left-hand bat',
+      bowlingStyle:
+          i == 4
+              ? 'Wicket keeper'
+              : i % 3 == 0
+              ? 'Right-arm fast'
+              : 'Right-arm spin',
       cardImageAsset: null,
       attributes: PlayerAttributes(
         batting: bat,

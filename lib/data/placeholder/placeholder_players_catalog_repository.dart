@@ -1,5 +1,6 @@
 import '../models/catalog_player.dart';
 import '../models/player_attributes.dart';
+import '../models/player_role.dart';
 import '../models/player_tier.dart';
 import '../repositories/players_catalog_repository.dart';
 
@@ -11,6 +12,11 @@ class PlaceholderPlayersCatalogRepository implements PlayersCatalogRepository {
       displayName: 'Catalog Pro (demo)',
       isRealPlayer: true,
       playerTier: PlayerTier.premium,
+      role: PlayerRole.allRounder,
+      country: 'Pakistan',
+      battingStyle: 'Right-hand bat',
+      bowlingStyle: 'Right-arm fast medium',
+      generatedBio: 'A premium catalog card with balanced all-round impact.',
       attributes: const PlayerAttributes(
         batting: 84,
         bowling: 72,
@@ -24,6 +30,11 @@ class PlaceholderPlayersCatalogRepository implements PlayersCatalogRepository {
       displayName: 'Custom Starter (trainable)',
       isRealPlayer: false,
       playerTier: PlayerTier.free,
+      role: PlayerRole.batter,
+      country: 'Generated',
+      battingStyle: 'Right-hand bat',
+      bowlingStyle: 'Part-time spin',
+      generatedBio: 'A trainable starter template for generated squads.',
       attributes: const PlayerAttributes(
         batting: 52,
         bowling: 48,

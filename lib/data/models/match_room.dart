@@ -38,6 +38,9 @@ class MatchRoom {
     this.hostBatFirst,
     this.chaseTarget,
     this.completedAt,
+    this.winnerUid,
+    this.resultAppliedUids = const [],
+    this.deliveryNumber = 0,
     this.commentaryTail = const [],
   });
 
@@ -55,9 +58,11 @@ class MatchRoom {
   final int guestRuns;
   final int hostWickets;
   final int guestWickets;
+
   /// Legal balls faced by host (for run rate / result).
   final int hostLegalBalls;
   final int guestLegalBalls;
+
   /// 1 = first innings, 2 = chase.
   final int inningsNumber;
 
@@ -68,31 +73,37 @@ class MatchRoom {
   final int? chaseTarget;
 
   final DateTime? completedAt;
+  final String? winnerUid;
+  final List<String> resultAppliedUids;
+  final int deliveryNumber;
   final List<String> commentaryTail;
 
   Map<String, dynamic> toMap() => {
-        'roomId': roomId,
-        'roomCode': roomCode,
-        'status': status.name,
-        'pitch': pitch.name,
-        'hostUid': hostUid,
-        'guestUid': guestUid,
-        'hostPlayingXi': hostPlayingXi,
-        'guestPlayingXi': guestPlayingXi,
-        'hostXiLocked': hostXiLocked,
-        'guestXiLocked': guestXiLocked,
-        'hostRuns': hostRuns,
-        'guestRuns': guestRuns,
-        'hostWickets': hostWickets,
-        'guestWickets': guestWickets,
-        'hostLegalBalls': hostLegalBalls,
-        'guestLegalBalls': guestLegalBalls,
-        'inningsNumber': inningsNumber,
-        'hostBatFirst': hostBatFirst,
-        'chaseTarget': chaseTarget,
-        'completedAt': completedAt?.toUtc().toIso8601String(),
-        'commentaryTail': commentaryTail,
-      };
+    'roomId': roomId,
+    'roomCode': roomCode,
+    'status': status.name,
+    'pitch': pitch.name,
+    'hostUid': hostUid,
+    'guestUid': guestUid,
+    'hostPlayingXi': hostPlayingXi,
+    'guestPlayingXi': guestPlayingXi,
+    'hostXiLocked': hostXiLocked,
+    'guestXiLocked': guestXiLocked,
+    'hostRuns': hostRuns,
+    'guestRuns': guestRuns,
+    'hostWickets': hostWickets,
+    'guestWickets': guestWickets,
+    'hostLegalBalls': hostLegalBalls,
+    'guestLegalBalls': guestLegalBalls,
+    'inningsNumber': inningsNumber,
+    'hostBatFirst': hostBatFirst,
+    'chaseTarget': chaseTarget,
+    'completedAt': completedAt?.toUtc().toIso8601String(),
+    'winnerUid': winnerUid,
+    'resultAppliedUids': resultAppliedUids,
+    'deliveryNumber': deliveryNumber,
+    'commentaryTail': commentaryTail,
+  };
 
   factory MatchRoom.fromMap(Map<String, dynamic> map) {
     return MatchRoom(
@@ -102,8 +113,12 @@ class MatchRoom {
       pitch: _parsePitch(map['pitch'] as String?),
       hostUid: map['hostUid'] as String?,
       guestUid: map['guestUid'] as String?,
-      hostPlayingXi: List<String>.from(map['hostPlayingXi'] as List? ?? const []),
-      guestPlayingXi: List<String>.from(map['guestPlayingXi'] as List? ?? const []),
+      hostPlayingXi: List<String>.from(
+        map['hostPlayingXi'] as List? ?? const [],
+      ),
+      guestPlayingXi: List<String>.from(
+        map['guestPlayingXi'] as List? ?? const [],
+      ),
       hostXiLocked: map['hostXiLocked'] as bool? ?? false,
       guestXiLocked: map['guestXiLocked'] as bool? ?? false,
       hostRuns: (map['hostRuns'] as num?)?.round() ?? 0,
@@ -115,10 +130,18 @@ class MatchRoom {
       inningsNumber: (map['inningsNumber'] as num?)?.round() ?? 1,
       hostBatFirst: map['hostBatFirst'] as bool?,
       chaseTarget: (map['chaseTarget'] as num?)?.round(),
-      completedAt: map['completedAt'] != null
-          ? DateTime.parse(map['completedAt'] as String).toLocal()
-          : null,
-      commentaryTail: List<String>.from(map['commentaryTail'] as List? ?? const []),
+      completedAt:
+          map['completedAt'] != null
+              ? DateTime.parse(map['completedAt'] as String).toLocal()
+              : null,
+      winnerUid: map['winnerUid'] as String?,
+      resultAppliedUids: List<String>.from(
+        map['resultAppliedUids'] as List? ?? const [],
+      ),
+      deliveryNumber: (map['deliveryNumber'] as num?)?.round() ?? 0,
+      commentaryTail: List<String>.from(
+        map['commentaryTail'] as List? ?? const [],
+      ),
     );
   }
 
@@ -143,6 +166,9 @@ class MatchRoom {
     bool? hostBatFirst,
     int? chaseTarget,
     DateTime? completedAt,
+    String? winnerUid,
+    List<String>? resultAppliedUids,
+    int? deliveryNumber,
     List<String>? commentaryTail,
   }) {
     return MatchRoom(
@@ -166,6 +192,9 @@ class MatchRoom {
       hostBatFirst: hostBatFirst ?? this.hostBatFirst,
       chaseTarget: chaseTarget ?? this.chaseTarget,
       completedAt: completedAt ?? this.completedAt,
+      winnerUid: winnerUid ?? this.winnerUid,
+      resultAppliedUids: resultAppliedUids ?? this.resultAppliedUids,
+      deliveryNumber: deliveryNumber ?? this.deliveryNumber,
       commentaryTail: commentaryTail ?? this.commentaryTail,
     );
   }

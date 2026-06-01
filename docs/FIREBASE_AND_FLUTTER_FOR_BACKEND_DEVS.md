@@ -1,107 +1,241 @@
-# Wicket Wars: Firebase + Flutter (for backend developers)
+# Wicket Wars: Firebase, architecture & data flow (viva / backend-dev guide)
 
-This document explains how the Wicket Wars Flutter app talks to Firebase, how the code is organised, and how that maps to concepts you already know from **Node.js** backends.
+This document describes **how the Wicket Wars Flutter app is structured**, which **Firebase services** it uses, and **how data moves** from the UI to Firestore. It is written so you can explain the system in a **viva** or hand it to someone who thinks in terms of **REST backends** (e.g. Node.js + database).
 
----
+**Stack (from `pubspec.yaml` — run `flutter pub outdated` to check for newer releases):**
 
-## The big picture
+| Piece | Package / role |
+|--------|----------------|
+| Language / UI | Flutter 3.x, Dart SDK `^3.7.2` |
+| Navigation | `go_router` ^14.x |
+| App state / DI | `flutter_riverpod` ^2.x |
+| Firebase core | `firebase_core` ^4.x |
+| Identity | `firebase_auth` ^6.x |
+| Database | `cloud_firestore` ^6.x |
+| Lab crypto demo | `encrypt` ^5.x (AES around auth — see [Password handling](#password-handling-lab-demo-vs-production)) |
 
-The app is a **client** (mobile/desktop/web UI) built with **Flutter** (Dart language). It does not run your game logic on a server you own unless you add Cloud Functions later. Today:
-
-- **Firebase Authentication** verifies who the user is (email + password).
-- **Cloud Firestore** is the database: documents and collections, queried from the app with security rules enforcing access.
-
-Think of it as a **single-page app** that happens to be compiled to native UI, using Firebase instead of your own Express + Postgres stack for auth and data.
-
----
-
-## Node.js analogies (mental map)
-
-| Backend / Node mental model | What it is in this Flutter project |
-|----------------------------|-------------------------------------|
-| **Express `app.get/post`** routes | **`GoRouter`** in `lib/app_router.dart` — URL paths like `/login`, `/`, `/squad` map to **screens** (widgets), not JSON handlers. |
-| **Session cookie / JWT middleware** | **Firebase Auth**: `FirebaseAuth.instance.currentUser` is “who is logged in”. `GoRouter`’s `redirect` sends guests to `/login`. **`go_router_auth_refresh.dart`** listens to `authStateChanges()` so the router updates after login/logout (similar to renewing session state). |
-| **Service layer / repositories** | **`lib/data/repositories/`** — Dart **interfaces** (`UserRepository`, `SquadRepository`, …) with **implementations** that read/write Firestore. In Node you might have `userService.getProfile()`; here it is `userRepository.watchProfile(uid)`. |
-| **Dependency injection** (e.g. passing `db` into services) | **Riverpod** `Provider`s in `lib/data/providers.dart`. They construct `FirebaseUserRepository()`, etc., so screens can `ref.watch(userProfileProvider)` without importing Firestore directly. Closest Node parallel: a small DI container or injecting services into route handlers. |
-| **MongoDB / document DB** | **Firestore** — collections and documents, JSON-like fields, real-time listeners. |
-| **`db.collection('x').onSnapshot()`** (live updates) | **`DocumentReference.snapshots()`** / **`Query.snapshots()`** in Dart — streams that emit whenever data changes. Riverpod often exposes these as `StreamProvider`s. |
-| **`.env` + config** | **`firebase_options.dart`** (Dart constants) + Android **`google-services.json`**. Created from the Firebase project; tells the SDK which Firebase project to use. |
-| **In-memory DB for tests** | **`lib/data/placeholder/`** — fake repositories (`PlaceholderUserRepository`, …). **`test/widget_test.dart`** **overrides** Riverpod providers so tests do not hit the real network/Firestore. |
+There is **no Cloud Functions** in this project yet: all game reads/writes go **from the client** to **Firestore** and **Auth**, subject to **security rules**.
 
 ---
 
-## Flutter-specific ideas (short)
+## 1. One-sentence summary
 
-- **Widget** — A piece of UI (like a component). `StatelessWidget` / `ConsumerWidget` rebuild when their data changes.
-- **`async`/`await`** — Same idea as in JavaScript; many Firebase calls return `Future`s.
-- **Streams** — Async sequences (like RxJS observables or Node streams used for events). Firestore “live listeners” are exposed as streams in Dart.
+**Wicket Wars** is a Flutter **client-only** app: **Firebase Authentication** identifies users; **Cloud Firestore** stores profiles, squads, match history, leaderboards, live match rooms, and a read-only player catalog; the **UI** uses **GoRouter** + **Riverpod**; optional **in-memory placeholders** swap in when Firebase cannot start on a platform.
 
 ---
 
-## What we added for Firebase (auth + Firestore)
+## 2. High-level architecture
 
-### 1. Dependencies (`pubspec.yaml`)
+```mermaid
+flowchart TB
+  subgraph ui["Presentation (lib/screens, lib/widgets)"]
+    Screens[Screens: Home, Squad, Live Match, Login, ...]
+    Screens --> Consumer[ConsumerWidget / ref.watch]
+  end
 
-- **`firebase_core`** — Bootstraps Firebase in `main()`.
-- **`firebase_auth`** — Sign up, sign in, sign out, `authStateChanges`.
-- **`cloud_firestore`** — Read/write/listen to documents.
+  subgraph state["State & navigation"]
+    Router[GoRouter app_router.dart]
+    AuthRefresh[GoRouterAuthRefresh]
+    Providers[Riverpod providers.dart]
+  end
 
-### 2. Startup (`lib/main.dart`)
+  subgraph domain["Data access (interfaces)"]
+    UserRepo[UserRepository]
+    SquadRepo[SquadRepository]
+    MatchRepo[MatchRepository]
+    LeaderRepo[LeaderboardRepository]
+    AuthRepo[AuthRepository]
+    CatalogRepo[PlayersCatalogRepository]
+    HistoryRepo[MatchHistoryRepository]
+  end
 
-Roughly equivalent to “connect to DB before listening on port”:
+  subgraph impl["Implementations"]
+    FB[Firebase*Repository]
+    PH[Placeholder*Repository]
+  end
 
-1. `WidgetsFlutterBinding.ensureInitialized()`
-2. `Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform)`
-3. `goRouterAuthRefresh.listenToAuth()` so navigation reacts to auth
-4. `runApp(ProviderScope(child: MyApp()))`
+  subgraph firebase["Firebase (Google)"]
+    AuthSvc[Firebase Auth]
+    FS[(Cloud Firestore)]
+  end
 
-### 3. Auth (`lib/data/repositories/auth_repository.dart`, `firebase_auth_repository.dart`)
+  Consumer --> Providers
+  Router --> AuthRefresh
+  AuthRefresh --> AuthRepo
+  Providers --> UserRepo
+  Providers --> SquadRepo
+  Providers --> MatchRepo
+  UserRepo --> FB
+  UserRepo --> PH
+  SquadRepo --> FB
+  SquadRepo --> PH
+  MatchRepo --> FB
+  MatchRepo --> PH
+  FB --> AuthSvc
+  FB --> FS
+```
 
-- Interface: `signInWithEmailAndPassword`, `createUserWithEmailAndPassword`, `signOut`, `watchAuthState`.
-- **`FirebaseAuthRepository`** implements it with `FirebaseAuth`.
-- **`go_router`** redirect uses **`FirebaseAuth.instance.currentUser != null`** as “logged in”.
+**Layers (bottom to top):**
 
-### 4. Firestore paths (schema-ish)
+1. **Firebase** — managed auth + document database.
+2. **Repositories** (`lib/data/repositories/`) — **interfaces** + **Firebase** and **placeholder** implementations; map Firestore ↔ Dart models.
+3. **Providers** (`lib/data/providers.dart`) — choose Firebase vs placeholder and expose `Future` / `Stream` data to the UI.
+4. **Screens & widgets** — consume providers with `ref.watch`; no Firestore imports in widgets (ideally).
+5. **Router** (`lib/app_router.dart`) — URL → screen; **redirect** if not logged in.
 
-Canonical paths live in **`lib/data/firestore_paths.dart`** (like a shared constants file for table names):
+---
+
+## 3. Firebase services actually used
+
+| Service | Role in Wicket Wars |
+|---------|---------------------|
+| **Firebase Auth** | Email/password sign-up, sign-in, sign-out; `authStateChanges` drives navigation. |
+| **Cloud Firestore** | All persistent game data (see [Schema](#4-firestore-schema-paths)). |
+| **Firebase project config** | `lib/firebase_options.dart` (FlutterFire) + Android `google-services.json` — tells the SDK which project to use. |
+
+**Not used (yet):** Cloud Functions, Realtime Database, Storage, FCM, Remote Config, etc.
+
+---
+
+## 4. Firestore schema (paths)
+
+Canonical string helpers: `lib/data/firestore_paths.dart`.  
+Typed `CollectionReference` / `DocumentReference` helpers: `lib/data/firestore/firestore_refs.dart`.
 
 | Path | Purpose |
 |------|---------|
-| `users/{uid}` | User profile (coins, `dailyStreak`, `lastDailyRewardClaimAt`, league, stats, …). Claiming daily reward may also **`upsert` a squad player** on every 4th streak day. |
-| `users/{uid}/players/{playerId}` | Squad cards. Fields include `isRealPlayer`, `playerTier` (`free` \| `premium`), optional `catalogPlayerId`, `attributes`, optional `training`. |
-| `players_catalog/{catalogId}` | Read-only templates for licensed / premium cards (seed in Console). Clients listen via **`FirebasePlayersCatalogRepository`**. |
-| `users/{uid}/matchHistory/{matchId}` | Past matches for that user |
-| `matchRooms/{roomId}` | Online match lobby / room state |
-| `leaderboard/{uid}` | One row per user for ranking (denormalised from profile on write) |
+| `users/{uid}` | **Profile**: display name, coins, ranking points, league, W/L, daily streak, last daily reward time, totals, … |
+| `users/{uid}/players/{playerId}` | **Squad cards** (up to 15 in app logic): tier, real vs custom, attributes, optional training. |
+| `users/{uid}/matchHistory/{matchId}` | **Completed matches** for history UI and “friends” leaderboard hints. |
+| `matchRooms/{roomId}` | **Online 1v1 room** (often `roomId` = 6-char code): host/guest UIDs, status, toss, scores, ball state, commentary tail. |
+| `leaderboard/{uid}` | **Denormalised row** per user for global ranking (updated when profile is saved). |
+| `players_catalog/{catalogId}` | **Read-only** templates for premium/licensed cards (seed in Console / Admin). |
 
-### 5. Firestore implementations (`lib/data/repositories/firebase_*_repository.dart`)
-
-- **`FirebaseUserRepository`** — Reads/writes `users/{uid}`. If the profile doc is missing, it **seeds** default stats once and **merges** a **`leaderboard/{uid}`** row (so new users can appear on the leaderboard).
-- **`FirebaseSquadRepository`** — `users/{uid}/players` subcollection.
-- **`FirebasePlayersCatalogRepository`** — `players_catalog`; **read-only** for app users (writes via Console or Admin SDK).
-- **`FirebaseMatchRepository`** — `matchRooms/{roomId}`; `createRoom` generates a short code and avoids collisions with retries. **`transactRoom`** runs a Firestore **transaction** so concurrent “next delivery” taps from two devices merge correctly (retry on contention).
-- **`FirebaseLeaderboardRepository`** — Queries `leaderboard` ordered by `rankingPoints` descending.
-- **`FirebaseMatchHistoryRepository`** — `users/{uid}/matchHistory`, ordered by `completedAt`.
-
-**Timestamp handling:** Firestore stores dates as `Timestamp`. **`lib/data/firestore/firestore_codec.dart`** converts them to ISO strings so existing `fromMap` factories (written for JSON-style data) keep working — similar to normalising a row in a repository before returning a domain object.
-
-**Typed refs:** **`lib/data/firestore/firestore_refs.dart`** adds extension methods on `FirebaseFirestore` so paths are not copy-pasted (like a thin table accessor).
-
-### 6. Wiring the UI to live data
-
-- **`HomeScreen`** — `ConsumerWidget`; uses **`userProfileProvider`** (backed by `FirebaseUserRepository.watchProfile`).
-- **`SquadScreen`** / **`PlayerDetailScreen`** — **`squadProvider(uid)`**; only **`playerTier: free`** and **`isRealPlayer: false`** may use train / coin-upgrade in the UI (premium and real cards are stat-locked).
-- **`LeaderboardScreen`** — **GLOBAL** uses **`leaderboardTopProvider`**; **FRIENDS** lists you plus opponents from **`matchHistoryProvider`**, with points taken from global rows when **display names** match.
-
-### 7. Riverpod (`lib/data/providers.dart`)
-
-Production providers return **`Firebase*Repository`**. For **widget tests**, **`test/widget_test.dart`** uses **`ProviderScope(overrides: [...])`** to inject **`Placeholder*Repository`** so the CI machine does not need Firestore or real credentials — same idea as mocking `userService` in a Jest test.
+**Codec:** `lib/data/firestore/firestore_codec.dart` normalises Firestore `Timestamp` values so `fromMap` factories stay consistent (similar to normalising DB rows in a backend repository).
 
 ---
 
-## Firestore security rules (you must set these in Firebase Console)
+## 5. Startup sequence (`lib/main.dart`)
 
-The app will be **denied** reads/writes if rules default to “closed”. A **starting point** for development (tighten before production):
+Order matters — this is what you can draw on a whiteboard:
+
+1. `WidgetsFlutterBinding.ensureInitialized()`
+2. **`Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform)`**  
+   - If this throws **`UnsupportedError`**, **`AppEnvironment.useLocalData()`** is called: all providers use **placeholder** repositories (no Firestore).
+3. **`goRouterAuthRefresh.listenToAuth(activeAuthRepository())`** — subscribes to auth stream so **`GoRouter`** rebuilds redirects on login/logout.
+4. **`InMemoryStore.instance.ensureInitialized()`** — prepares placeholder store if needed.
+5. **`runApp(ProviderScope(child: MyApp()))`** — Riverpod root; **`MaterialApp.router`** uses **`GoogleFonts`** theme (note: first run may fetch fonts unless bundled).
+
+**Config files:** `firebase_options.dart`, Android `google-services.json`, and `applicationId` / Firebase package alignment in `android/app/build.gradle.kts`.
+
+---
+
+## 6. Authentication & navigation
+
+**Repository:** `lib/data/repositories/firebase_auth_repository.dart` implements `AuthRepository` (sign in/up/out, `watchAuthState`).
+
+**Router guard:** `lib/app_router.dart` — `refreshListenable: goRouterAuthRefresh`; **`redirect`** sends unauthenticated users to `/login` and signed-in users away from `/login` and `/signup`.
+
+**Bridge:** `lib/auth/go_router_auth_refresh.dart` — `ChangeNotifier` that listens to **`watchAuthState()`** and calls **`notifyListeners()`** so GoRouter re-runs **`redirect`** (like “session changed” in a web app).
+
+**Who is “logged in”?** `GoRouterAuthRefresh.isSignedIn` → `AuthRepository.currentUser != null` (backed by Firebase Auth when Firebase mode is on).
+
+---
+
+## 7. Riverpod: how screens get data
+
+**File:** `lib/data/providers.dart`.
+
+- **`AppEnvironment.useFirebase`** (default `true`) selects **`Firebase*Repository`** vs **`Placeholder*Repository`** for each interface.
+- Common patterns:
+  - **`authRepositoryProvider`**, **`userRepositoryProvider`**, …
+  - **`authStateProvider`** — `StreamProvider<AppUser?>`
+  - **`userProfileProvider`** — profile stream for current user
+  - **`squadProvider(uid)`** — squad list stream
+  - **`matchRoomProvider(roomId)`** — **live** room document stream (multiplayer)
+  - **`leaderboardTopProvider`**, **`playersCatalogProvider`**, **`matchHistoryProvider`**, etc.
+
+**Tests:** `test/widget_test.dart` uses **`ProviderScope(overrides: …)`** to inject placeholders — same idea as mocking a service in Jest.
+
+---
+
+## 8. Major features → code map (for viva “where is X?”)
+
+| Feature | Screen(s) | Key providers / repos |
+|---------|-----------|------------------------|
+| Login / signup | `login_screen.dart`, `signup_screen.dart` | `authRepositoryProvider`, router redirect |
+| Home / daily reward | `home_screen.dart`, `daily_reward_dialog.dart` | `userProfileProvider`; claims update profile (`upsertProfile`). Streak-based coins; every **4th** consecutive day **`streak_player_reward.dart`** may add a free trainee to the squad (or bonus coins if squad full) via `squadRepositoryProvider` + catalog. |
+| Squad & training | `squad_screen.dart`, `player_detail_screen.dart`, pickers | `squadProvider`, `FirebaseSquadRepository` |
+| Player catalog | (squad / unlock flows) | `playersCatalogProvider`, `FirebasePlayersCatalogRepository` |
+| Global / friends leaderboard | `leaderboard_screen.dart` | `leaderboardTopProvider`, `matchHistoryProvider` |
+| Online lobby | `online_match_screen.dart` | `matchRepositoryProvider`, `matchRoomProvider` after join |
+| Live T20 match | `live_match_screen.dart` | `matchRoomProvider`, `transactRoom` + `applyOneDelivery` |
+| Match result | `match_result_screen.dart` | args from `LiveMatchScreen`; history + profile updates |
+| Placeholder / labs | `placeholder_tab_screen.dart` | local-only UI paths |
+
+---
+
+## 9. Online (1v1) match flow — how it works
+
+**Goal:** two signed-in users share **one Firestore document** `matchRooms/{roomId}` so both see the same score.
+
+1. **Host** calls **`createRoom`** → new doc with **6-char code**, `hostUid`, status **waitingGuest**.
+2. **Guest** enters code → **`getRoom`** → **`joinRoom`** sets `guestUid` and status (e.g. selecting XI).
+3. **Live screen** **`watchRoom`** → **real-time snapshot stream**; UI rebuilds on every write.
+4. **Bootstrap** (`LiveMatchScreen`): auto-picks **top 11 by OVR** from each user’s squad in Firestore; random **toss**; sets innings state in the room doc.
+5. **Each “Next delivery”** calls **`FirebaseMatchRepository.transactRoom`**: runs **`applyOneDelivery`** inside a Firestore **transaction** so two phones tapping concurrently still get a consistent next state (retries on contention).
+6. **End of match:** room marked **completed**; **`FirebaseMatchHistoryRepository.append`**; **`FirebaseUserRepository.upsertProfile`** for coins/XP/W-L.
+
+**Important viva points:**
+
+- Logic runs **on the client**; **security rules** must enforce who can change what (see below).
+- This is an **MVP**: no dedicated “only batter taps” rule in the UI; both players *can* advance the ball — transactions keep state consistent, not “fair play”.
+- **Placeholder mode:** `watchRoom` in memory does **not** sync across devices — multiplayer needs **Firebase**.
+
+---
+
+## 10. Match simulation (pure Dart)
+
+**Files:** `lib/data/match_simulation.dart`, `lib/data/match_delivery_engine.dart`, `lib/data/cricket_format.dart`.
+
+- **`applyOneDelivery(room, rng)`** updates runs, wickets, legal balls, innings switch, chase target, commentary tail.
+- **T20 limits:** e.g. 20 overs → **120 legal balls** per innings, **10 wickets** ends innings.
+- **Pitch** (`PitchCondition`) feeds into ball RNG.
+
+This is **deterministic given room + RNG** inside the transaction — there is **no server-side simulation** unless you add Cloud Functions later.
+
+---
+
+## 11. Password handling (lab demo vs production)
+
+**File:** `lib/auth/password_crypto.dart`.
+
+- The course may require **AES encrypt/decrypt** around passwords.
+- **Reality:** Firebase Auth APIs expect a **plaintext** password. The app **encrypts in memory**, then **decrypts immediately** before calling Firebase; transport is still **TLS**.
+- **Hardcoded key in source is not production-safe** — a viva should mention **Keystore / Keychain / KMS** for real secrets.
+
+---
+
+## 12. Node.js mental map (quick table)
+
+| Backend mental model | In this app |
+|---------------------|-------------|
+| Express routes | **GoRouter** routes → **screens** |
+| Session / JWT | **Firebase Auth** session + `currentUser` |
+| Service layer | **`Firebase*Repository`** classes |
+| DI / IoC | **Riverpod `Provider`s** |
+| Mongo-style documents | **Firestore** collections + docs |
+| `onSnapshot` live query | **`DocumentReference.snapshots()`** → Dart `Stream` |
+| `.env` | **`firebase_options.dart`** + `google-services.json` |
+| Integration test mocks | **`Placeholder*Repository`** + provider **overrides** |
+
+---
+
+## 13. Firestore security rules (Console)
+
+The app **must** have rules that match your data model; default “deny all” blocks everything.
+
+**Development-oriented example** (tighten for production — especially **`matchRooms`** who can write which fields):
 
 ```text
 rules_version = '2';
@@ -129,7 +263,6 @@ service cloud.firestore {
       allow write: if request.auth != null && request.auth.uid == entryId;
     }
 
-    // Seed from Firebase Console / Admin SDK only — clients must not create fake catalog entries.
     match /players_catalog/{catalogId} {
       allow read: if request.auth != null;
       allow write: if false;
@@ -138,9 +271,24 @@ service cloud.firestore {
 }
 ```
 
-### Example `players_catalog` document
+**Viva talking point:** Production rules should restrict **`matchRooms`** updates to **`hostUid` / `guestUid`** only and validate field shapes, otherwise any signed-in user could edit any room.
 
-Create a document ID (e.g. `ace_batter_01`) with fields aligned to **`CatalogPlayer`** / **`CricketPlayer`** maps:
+---
+
+## 14. Indexes
+
+If Firestore returns an error with a **link to create a composite index**, follow it. Typical queries in this app:
+
+- Leaderboard: `orderBy('rankingPoints', descending: true)` with `limit`.
+- Match history: `orderBy('completedAt', descending: true)` on `users/{uid}/matchHistory`.
+
+Single-field indexes are often automatic; **composite** indexes are needed when combining multiple filters / orderings.
+
+---
+
+## 15. Example `players_catalog` document
+
+Document ID e.g. `ace_batter_01`, fields aligned with **`CatalogPlayer`** / squad player maps:
 
 ```json
 {
@@ -158,23 +306,26 @@ Create a document ID (e.g. `ace_batter_01`) with fields aligned to **`CatalogPla
 }
 ```
 
-When you add an **unlock** or **copy-to-squad** flow, create `users/{uid}/players/{newId}` with the same shape plus **`catalogPlayerId`** set to the catalog doc id.
-
-**Production** should narrow `matchRooms` updates (e.g. only `hostUid` / `guestUid`) and decide if `leaderboard` is readable by everyone or only signed-in users.
+Unlock / copy-to-squad flows create `users/{uid}/players/{newId}` with the same shape plus **`catalogPlayerId`** when copying from catalog.
 
 ---
 
-## Indexes
+## 16. Summary checklist (before the viva)
 
-Firestore may prompt you to create a **composite index** if you add queries that combine filters and `orderBy`. The leaderboard query uses **`orderBy('rankingPoints', descending: true)`** — usually fine with automatic single-field indexing. Match history uses **`orderBy('completedAt', descending: true)`** on a subcollection — create the index if the console link appears in an error message.
+- **Auth:** Firebase Auth; router redirects; auth state pushes router refresh.
+- **Data:** Firestore paths above; repositories encapsulate access; Riverpod exposes streams to UI.
+- **Realtime:** Squad, profile, leaderboard, **match room** use **listeners**.
+- **Multiplayer:** One room document; **transactions** for concurrent deliveries.
+- **Security:** Rules in Console; catalog client-read-only; tighten `matchRooms` for production.
+- **Extensibility:** **Cloud Functions** for trusted logic (anti-cheat, aggregates) without changing the high-level **Flutter → Firebase** picture.
 
 ---
 
-## Summary
+## 17. Optional: where to extend next
 
-- **Auth** = who you are (`FirebaseAuth`).
-- **Firestore** = JSON documents + real-time listeners (`snapshots()`).
-- **Repositories** = your “data access layer”; **Riverpod** = how the UI gets them.
-- **Node analogy**: replace Express routes + session + `UserService` + Mongo driver with **GoRouter + FirebaseAuth + Repositories + Firestore**.
+- **Cloud Functions** for server-validated coin/XP changes, room integrity, webhooks.
+- **Stricter rules** on `matchRooms` (field-level or helper predicates).
+- **Offline persistence** / Firestore cache for flaky networks.
+- **Bundled fonts** if you must avoid runtime `google_fonts` downloads during demos.
 
-If you add **Cloud Functions** later, that is your place for trusted server logic (anti-cheat, aggregates, webhooks) — the Flutter app stays a thin client talking to Auth, Firestore, and HTTPS callable functions.
+If anything in this doc drifts from the code, treat **`lib/`** and **`pubspec.yaml`** as the source of truth and update this file in the same PR.

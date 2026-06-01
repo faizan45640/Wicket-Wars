@@ -12,6 +12,7 @@ import '../data/models/user_profile.dart';
 import '../data/providers.dart';
 import '../theme/game_colors.dart';
 import '../widgets/game_bottom_nav.dart';
+import '../widgets/player_card_image.dart';
 
 const Duration kTrainingDuration = Duration(seconds: 45);
 const int kUpgradeCoinCost = 100;
@@ -46,7 +47,9 @@ class _PlayerDetailScreenState extends ConsumerState<PlayerDetailScreen> {
         if (!mounted) return;
         final uid = ref.read(currentUidProvider);
         if (uid != null) {
-          unawaited(ref.read(squadRepositoryProvider).upsertPlayer(uid, _player));
+          unawaited(
+            ref.read(squadRepositoryProvider).upsertPlayer(uid, _player),
+          );
         }
       });
     } else if (_player.isTraining) {
@@ -96,7 +99,9 @@ class _PlayerDetailScreenState extends ConsumerState<PlayerDetailScreen> {
     setState(() => _player = updatedPlayer);
     if (uid != null) {
       try {
-        await ref.read(squadRepositoryProvider).upsertPlayer(uid, updatedPlayer);
+        await ref
+            .read(squadRepositoryProvider)
+            .upsertPlayer(uid, updatedPlayer);
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -147,9 +152,9 @@ class _PlayerDetailScreenState extends ConsumerState<PlayerDetailScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _player = _player.copyWith(clearTraining: true));
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not start training: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Could not start training: $e')));
       }
       return;
     }
@@ -174,15 +179,17 @@ class _PlayerDetailScreenState extends ConsumerState<PlayerDetailScreen> {
     }
     final profile = ref.read(userProfileProvider).valueOrNull;
     if (profile == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Profile still loading…')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Profile still loading…')));
       return;
     }
     if (profile.coins < kUpgradeCoinCost) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Not enough coins (need ${_coinFmt.format(kUpgradeCoinCost)})'),
+          content: Text(
+            'Not enough coins (need ${_coinFmt.format(kUpgradeCoinCost)})',
+          ),
           backgroundColor: GameColors.card,
           behavior: SnackBarBehavior.floating,
         ),
@@ -192,15 +199,17 @@ class _PlayerDetailScreenState extends ConsumerState<PlayerDetailScreen> {
     final a = _player.attributes;
     final boosted = _boostWeakest(a, kUpgradeStatBoost);
     final updatedPlayer = _player.copyWith(attributes: boosted);
-    final updatedProfile = profile.copyWith(coins: profile.coins - kUpgradeCoinCost);
+    final updatedProfile = profile.copyWith(
+      coins: profile.coins - kUpgradeCoinCost,
+    );
     try {
       await ref.read(userRepositoryProvider).upsertProfile(updatedProfile);
       await ref.read(squadRepositoryProvider).upsertPlayer(uid, updatedPlayer);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not apply upgrade: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Could not apply upgrade: $e')));
       }
       return;
     }
@@ -229,12 +238,6 @@ class _PlayerDetailScreenState extends ConsumerState<PlayerDetailScreen> {
     return a.copyWith(consistency: con + by);
   }
 
-  String get _nameInitial {
-    final n = _player.displayName.trim();
-    if (n.isEmpty) return '?';
-    return n[0].toUpperCase();
-  }
-
   String _trainCountdown() {
     final t = _player.training;
     if (t == null) return '';
@@ -251,7 +254,6 @@ class _PlayerDetailScreenState extends ConsumerState<PlayerDetailScreen> {
     final coins = profileAsync.valueOrNull?.coins;
 
     final a = _player.attributes;
-    final ovr = a.overall;
     return Scaffold(
       backgroundColor: GameColors.bg,
       appBar: AppBar(
@@ -259,7 +261,11 @@ class _PlayerDetailScreenState extends ConsumerState<PlayerDetailScreen> {
         elevation: 0,
         scrolledUnderElevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: GameColors.neon, size: 20),
+          icon: const Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: GameColors.neon,
+            size: 20,
+          ),
           onPressed: () => context.pop(),
         ),
         centerTitle: true,
@@ -286,24 +292,30 @@ class _PlayerDetailScreenState extends ConsumerState<PlayerDetailScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-            child: _SummaryCard(
-              name: _player.displayName,
-              ovr: ovr,
-              initial: _nameInitial,
-              cardImageAsset: _player.cardImageAsset,
-            ),
+            child: _SummaryCard(player: _player),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+            child: _IdentityStrip(player: _player),
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Row(
               children: [
-                const Icon(Icons.monetization_on, color: Colors.amber, size: 20),
+                const Icon(
+                  Icons.monetization_on,
+                  color: Colors.amber,
+                  size: 20,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: profileAsync.when(
                     data: (UserProfile? p) {
                       final c = p?.coins;
-                      final label = c == null ? 'Sign in for coins' : 'Coins: ${_coinFmt.format(c)}';
+                      final label =
+                          c == null
+                              ? 'Sign in for coins'
+                              : 'Coins: ${_coinFmt.format(c)}';
                       return Text(
                         label,
                         style: TextStyle(
@@ -313,18 +325,23 @@ class _PlayerDetailScreenState extends ConsumerState<PlayerDetailScreen> {
                         ),
                       );
                     },
-                    loading: () => Text(
-                      'Coins: …',
-                      style: TextStyle(
-                        color: GameColors.muted.withValues(alpha: 0.95),
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14,
-                      ),
-                    ),
-                    error: (e, _) => Text(
-                      'Coins: error',
-                      style: TextStyle(color: Colors.red.shade200, fontSize: 13),
-                    ),
+                    loading:
+                        () => Text(
+                          'Coins: …',
+                          style: TextStyle(
+                            color: GameColors.muted.withValues(alpha: 0.95),
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                          ),
+                        ),
+                    error:
+                        (e, _) => Text(
+                          'Coins: error',
+                          style: TextStyle(
+                            color: Colors.red.shade200,
+                            fontSize: 13,
+                          ),
+                        ),
                   ),
                 ),
                 Text(
@@ -367,13 +384,29 @@ class _PlayerDetailScreenState extends ConsumerState<PlayerDetailScreen> {
                   children: [
                     const _ScrollHintArrows(),
                     const SizedBox(height: 4),
-                    _AttributeBar(label: 'BATTING', value: a.batting, color: const Color(0xFF64B5F6)),
+                    _AttributeBar(
+                      label: 'BATTING',
+                      value: a.batting,
+                      color: const Color(0xFF64B5F6),
+                    ),
                     const SizedBox(height: 10),
-                    _AttributeBar(label: 'BOWLING', value: a.bowling, color: const Color(0xFFFFB74D)),
+                    _AttributeBar(
+                      label: 'BOWLING',
+                      value: a.bowling,
+                      color: const Color(0xFFFFB74D),
+                    ),
                     const SizedBox(height: 10),
-                    _AttributeBar(label: 'FIELDING', value: a.fielding, color: const Color(0xFF81C784)),
+                    _AttributeBar(
+                      label: 'FIELDING',
+                      value: a.fielding,
+                      color: const Color(0xFF81C784),
+                    ),
                     const SizedBox(height: 10),
-                    _AttributeBar(label: 'STAMINA', value: a.stamina, color: const Color(0xFFBA68C8)),
+                    _AttributeBar(
+                      label: 'STAMINA',
+                      value: a.stamina,
+                      color: const Color(0xFFBA68C8),
+                    ),
                     const SizedBox(height: 10),
                     _AttributeBar(
                       label: 'CONSISTENCY',
@@ -393,9 +426,10 @@ class _PlayerDetailScreenState extends ConsumerState<PlayerDetailScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 ElevatedButton.icon(
-                  onPressed: !_player.canTrainAndUpgrade
-                      ? null
-                      : _player.isTraining
+                  onPressed:
+                      !_player.canTrainAndUpgrade
+                          ? null
+                          : _player.isTraining
                           ? null
                           : _startTraining,
                   style: ElevatedButton.styleFrom(
@@ -407,46 +441,62 @@ class _PlayerDetailScreenState extends ConsumerState<PlayerDetailScreen> {
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
-                      side: BorderSide(color: GameColors.neon.withValues(alpha: 0.4)),
+                      side: BorderSide(
+                        color: GameColors.neon.withValues(alpha: 0.4),
+                      ),
                     ),
                   ),
                   icon: Icon(
                     Icons.fitness_center_rounded,
-                    color: (!_player.canTrainAndUpgrade || _player.isTraining)
-                        ? GameColors.muted
-                        : GameColors.neon,
+                    color:
+                        (!_player.canTrainAndUpgrade || _player.isTraining)
+                            ? GameColors.muted
+                            : GameColors.neon,
                     size: 22,
                   ),
                   label: Text(
                     !_player.canTrainAndUpgrade
                         ? 'TRAIN (locked)'
                         : _player.isTraining
-                            ? 'TRAINING… ${_trainCountdown()}'
-                            : 'TRAIN PLAYER  (${kTrainingDuration.inSeconds}s)',
+                        ? 'TRAINING… ${_trainCountdown()}'
+                        : 'TRAIN PLAYER  (${kTrainingDuration.inSeconds}s)',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(fontWeight: FontWeight.w800, letterSpacing: 0.4),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.4,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 10),
                 ElevatedButton.icon(
-                  onPressed: (coins != null &&
-                          coins >= kUpgradeCoinCost &&
-                          _player.canTrainAndUpgrade)
-                      ? _upgradeInstant
-                      : null,
+                  onPressed:
+                      (coins != null &&
+                              coins >= kUpgradeCoinCost &&
+                              _player.canTrainAndUpgrade)
+                          ? _upgradeInstant
+                          : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: GameColors.neon,
                     foregroundColor: GameColors.onNeonButton,
-                    disabledBackgroundColor: GameColors.muted.withValues(alpha: 0.25),
+                    disabledBackgroundColor: GameColors.muted.withValues(
+                      alpha: 0.25,
+                    ),
                     disabledForegroundColor: GameColors.muted,
                     elevation: 0,
                     padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
                   ),
                   icon: const Icon(Icons.trending_up_rounded, size: 24),
                   label: Text(
-                    _player.canTrainAndUpgrade ? 'UPGRADE +' : 'UPGRADE (locked)',
-                    style: const TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.5),
+                    _player.canTrainAndUpgrade
+                        ? 'UPGRADE +'
+                        : 'UPGRADE (locked)',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0.5,
+                    ),
                   ),
                 ),
               ],
@@ -468,7 +518,9 @@ class _ScrollHintArrows extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Icon(
-        down ? Icons.keyboard_arrow_down_rounded : Icons.keyboard_arrow_up_rounded,
+        down
+            ? Icons.keyboard_arrow_down_rounded
+            : Icons.keyboard_arrow_up_rounded,
         size: 18,
         color: GameColors.muted.withValues(alpha: 0.45),
       ),
@@ -477,21 +529,13 @@ class _ScrollHintArrows extends StatelessWidget {
 }
 
 class _SummaryCard extends StatelessWidget {
-  const _SummaryCard({
-    required this.name,
-    required this.ovr,
-    required this.initial,
-    this.cardImageAsset,
-  });
+  const _SummaryCard({required this.player});
 
-  final String name;
-  final int ovr;
-  final String initial;
-  final String? cardImageAsset;
+  final CricketPlayer player;
 
   @override
   Widget build(BuildContext context) {
-    final path = cardImageAsset?.trim() ?? '';
+    final ovr = player.attributes.overall;
     return Card(
       color: GameColors.card,
       shape: RoundedRectangleBorder(
@@ -506,33 +550,64 @@ class _SummaryCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Container(
-              width: 72,
-              height: 72,
+              width: 84,
+              height: 112,
               decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: GameColors.neon.withValues(alpha: 0.6), width: 2),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: GameColors.neon.withValues(alpha: 0.6),
+                  width: 2,
+                ),
               ),
               clipBehavior: Clip.antiAlias,
-              child: path.isNotEmpty
-                  ? Image.asset(
-                      path,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => _LetterAvatar(initial: initial),
-                    )
-                  : _LetterAvatar(initial: initial),
+              child: PlayerCardImage(
+                imageAsset: player.cardImageAsset,
+                imageUrl: player.avatarUrl,
+                isReal: player.isRealPlayer,
+                playerName: player.displayName,
+              ),
             ),
             const SizedBox(width: 14),
             Expanded(
-              child: Text(
-                name,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Color(0xFFF0F0F0),
-                  fontSize: 20,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 0.2,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    player.displayName,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Color(0xFFF0F0F0),
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0.2,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '${player.roleLabel} · ${player.countryLabel}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: GameColors.neon.withValues(alpha: 0.9),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  if ((player.generatedBio ?? '').trim().isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      player.generatedBio!.trim(),
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: GameColors.muted.withValues(alpha: 0.92),
+                        fontSize: 12,
+                        height: 1.32,
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
             const SizedBox(width: 10),
@@ -544,24 +619,74 @@ class _SummaryCard extends StatelessWidget {
   }
 }
 
-class _LetterAvatar extends StatelessWidget {
-  const _LetterAvatar({required this.initial});
+class _IdentityStrip extends StatelessWidget {
+  const _IdentityStrip({required this.player});
 
-  final String initial;
+  final CricketPlayer player;
 
   @override
   Widget build(BuildContext context) {
-    return ColoredBox(
-      color: const Color(0xFF0E0E0E),
-      child: Center(
-        child: Text(
-          initial,
-          style: const TextStyle(
-            color: GameColors.neon,
-            fontSize: 28,
-            fontWeight: FontWeight.w900,
+    final items = [
+      _IdentityItem(
+        icon: Icons.sports_cricket_rounded,
+        label:
+            player.battingStyle?.trim().isNotEmpty == true
+                ? player.battingStyle!.trim()
+                : 'Batting style unknown',
+      ),
+      _IdentityItem(
+        icon: Icons.sports_baseball_rounded,
+        label:
+            player.bowlingStyle?.trim().isNotEmpty == true
+                ? player.bowlingStyle!.trim()
+                : 'Bowling style unknown',
+      ),
+    ];
+    return Row(
+      children: [
+        for (var i = 0; i < items.length; i++) ...[
+          Expanded(child: items[i]),
+          if (i < items.length - 1) const SizedBox(width: 8),
+        ],
+      ],
+    );
+  }
+}
+
+class _IdentityItem extends StatelessWidget {
+  const _IdentityItem({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 44,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(
+        color: GameColors.card,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: GameColors.cardBorder),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: GameColors.neon, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: GameColors.muted.withValues(alpha: 0.95),
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                height: 1.15,
+              ),
+            ),
           ),
-        ),
+        ],
       ),
     );
   }

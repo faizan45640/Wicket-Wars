@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'cricket_format.dart';
 import 'match_simulation.dart';
+import 'models/cricket_player.dart';
 import 'models/match_room.dart';
 
 /// Who faces this innings (once [MatchRoom.hostBatFirst] is set).
@@ -12,7 +13,12 @@ bool battingIsHost(MatchRoom r) {
 }
 
 /// Apply one legal delivery; returns `null` if the striker's innings is already over or match not ready.
-MatchRoom? applyOneDelivery(MatchRoom room, Random rng) {
+MatchRoom? applyOneDelivery(
+  MatchRoom room,
+  Random rng, {
+  List<CricketPlayer> hostPlayers = const [],
+  List<CricketPlayer> guestPlayers = const [],
+}) {
   if (room.status == MatchRoomStatus.completed) return null;
   if (room.hostBatFirst == null) return null;
 
@@ -29,6 +35,11 @@ MatchRoom? applyOneDelivery(MatchRoom room, Random rng) {
     return null;
   }
 
+  final battingLineup = battingHost ? hostPlayers : guestPlayers;
+  final bowlingLineup = battingHost ? guestPlayers : hostPlayers;
+  final batter = _selectBatter(battingLineup, bw, bb);
+  final bowler = _selectBowler(bowlingLineup, bb);
+
   final ctx = SimBallContext(
     pitch: room.pitch,
     legalBallsInInnings: bb,
@@ -36,6 +47,19 @@ MatchRoom? applyOneDelivery(MatchRoom room, Random rng) {
     runsScoredThisInnings: br,
     isChaseInnings: room.inningsNumber == 2,
     chaseTarget: room.chaseTarget,
+    battingRating:
+        batter?.attributes.batting ??
+        _averageRating(battingLineup, (p) => p.attributes.batting),
+    bowlingRating:
+        bowler?.attributes.bowling ??
+        _averageRating(bowlingLineup, (p) => p.attributes.bowling),
+    fieldingRating: _averageRating(bowlingLineup, (p) => p.attributes.fielding),
+    staminaRating:
+        batter?.attributes.stamina ??
+        _averageRating(battingLineup, (p) => p.attributes.stamina),
+    consistencyRating:
+        batter?.attributes.consistency ??
+        _averageRating(battingLineup, (p) => p.attributes.consistency),
   );
 
   final sim = simulateBall(ctx, rng);
@@ -61,8 +85,10 @@ MatchRoom? applyOneDelivery(MatchRoom room, Random rng) {
 
   final who = battingHost ? 'Host' : 'Guest';
   final over = formatOversFromBalls(battingHost ? hb : gb);
+  final batterName = batter?.displayName ?? who;
+  final bowlerName = bowler?.displayName;
   final line =
-      '$over · $who: ${runs > 0 ? '$runs' : 'dot'}${wicket > 0 ? ' · OUT!' : ''}';
+      '$over · $batterName${bowlerName == null ? '' : ' vs $bowlerName'}: ${runs > 0 ? '$runs' : 'dot'}${wicket > 0 ? ' · OUT!' : ''}';
 
   var inn = room.inningsNumber;
   var target = room.chaseTarget;
@@ -76,10 +102,7 @@ MatchRoom? applyOneDelivery(MatchRoom room, Random rng) {
   if (inn == 1 && (newBw >= 10 || newBb >= 120)) {
     target = newBr + 1;
     inn = 2;
-    tail = [
-      ...tail,
-      '— End of 1st innings ($newBr/$newBw). Target: $target —',
-    ];
+    tail = [...tail, '— End of 1st innings ($newBr/$newBw). Target: $target —'];
     if (tail.length > 30) tail = tail.sublist(tail.length - 30);
   }
 
@@ -92,12 +115,44 @@ MatchRoom? applyOneDelivery(MatchRoom room, Random rng) {
     guestLegalBalls: gb,
     inningsNumber: inn,
     chaseTarget: target,
+    deliveryNumber: room.deliveryNumber + 1,
     commentaryTail: tail,
   );
 }
 
+CricketPlayer? _selectBatter(
+  List<CricketPlayer> lineup,
+  int wicketsDown,
+  int balls,
+) {
+  if (lineup.isEmpty) return null;
+  final index = wicketsDown.clamp(0, lineup.length - 1);
+  if (balls < 6 && lineup.length > 1) return lineup[balls.isEven ? 0 : 1];
+  return lineup[index];
+}
+
+CricketPlayer? _selectBowler(List<CricketPlayer> lineup, int balls) {
+  if (lineup.isEmpty) return null;
+  final sorted = [...lineup]
+    ..sort((a, b) => b.attributes.bowling.compareTo(a.attributes.bowling));
+  final over = balls ~/ 6;
+  return sorted[over % sorted.length];
+}
+
+int _averageRating(
+  List<CricketPlayer> players,
+  int Function(CricketPlayer p) pick,
+) {
+  if (players.isEmpty) return 60;
+  final total = players.fold<int>(0, (sum, p) => sum + pick(p));
+  return (total / players.length).round().clamp(0, 100);
+}
+
 /// After a delivery, whether the match should move to result (2nd innings finished or chase met).
-bool shouldAutoCompleteMatchAfterDelivery(MatchRoom room, {required bool strikerWasHost}) {
+bool shouldAutoCompleteMatchAfterDelivery(
+  MatchRoom room, {
+  required bool strikerWasHost,
+}) {
   if (room.inningsNumber != 2) return false;
   final score = strikerWasHost ? room.hostRuns : room.guestRuns;
   if (room.chaseTarget != null && score >= room.chaseTarget!) return true;

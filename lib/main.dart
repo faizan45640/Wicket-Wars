@@ -10,16 +10,35 @@ import 'app_router.dart';
 import 'data/placeholder/in_memory_store.dart';
 import 'data/providers.dart';
 import 'firebase_options.dart';
+import 'services/ads_service.dart';
+import 'services/app_logger.dart';
+import 'services/app_profiler.dart';
+import 'services/background_training_service.dart';
+import 'services/local_notification_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  try {
+    await AppProfiler.trace('app_bootstrap', () async {
+      await AdsService.initialize();
+      await LocalNotificationService.instance.initialize();
+      await LocalNotificationService.instance.requestPermission();
+      await BackgroundTrainingService.initialize();
+    });
+  } catch (error, stackTrace) {
+    AppLogger.warning(
+      'Optional mobile services unavailable',
+      error: error,
+      stackTrace: stackTrace,
+    );
+  }
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
   } on UnsupportedError catch (error) {
     AppEnvironment.useLocalData();
-    debugPrint('Firebase unavailable on this platform: $error');
+    AppLogger.warning('Firebase unavailable on this platform', error: error);
   }
   goRouterAuthRefresh.listenToAuth(activeAuthRepository());
   InMemoryStore.instance.ensureInitialized();

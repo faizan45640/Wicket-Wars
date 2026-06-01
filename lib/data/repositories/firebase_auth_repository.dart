@@ -5,7 +5,7 @@ import 'auth_repository.dart';
 
 class FirebaseAuthRepository implements AuthRepository {
   FirebaseAuthRepository({fb.FirebaseAuth? firebaseAuth})
-      : _auth = firebaseAuth ?? fb.FirebaseAuth.instance;
+    : _auth = firebaseAuth ?? fb.FirebaseAuth.instance;
 
   final fb.FirebaseAuth _auth;
 
@@ -18,8 +18,10 @@ class FirebaseAuthRepository implements AuthRepository {
   }
 
   @override
-  Stream<AppUser?> watchAuthState() {
-    return _auth.authStateChanges().map((u) => u == null ? null : _mapUser(u));
+  Stream<AppUser?> watchAuthState() async* {
+    final current = _auth.currentUser;
+    yield current == null ? null : _mapUser(current);
+    yield* _auth.idTokenChanges().map((u) => u == null ? null : _mapUser(u));
   }
 
   @override
@@ -52,6 +54,7 @@ class FirebaseAuthRepository implements AuthRepository {
   Future<AppUser> createUserWithEmailAndPassword({
     required String email,
     required String password,
+    String? displayName,
   }) async {
     final cred = await _auth.createUserWithEmailAndPassword(
       email: email.trim(),
@@ -64,7 +67,25 @@ class FirebaseAuthRepository implements AuthRepository {
         message: 'Account created but user is null.',
       );
     }
+    final trimmedName = displayName?.trim();
+    if (trimmedName != null && trimmedName.isNotEmpty) {
+      await u.updateDisplayName(trimmedName);
+      await u.reload();
+    }
     return _mapUser(u);
+  }
+
+  @override
+  Future<void> sendPasswordResetEmail(String email) {
+    return _auth.sendPasswordResetEmail(email: email.trim());
+  }
+
+  @override
+  Future<void> updateDisplayName(String displayName) async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+    await user.updateDisplayName(displayName.trim());
+    await user.reload();
   }
 
   @override

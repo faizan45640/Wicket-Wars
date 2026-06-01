@@ -16,7 +16,12 @@ abstract class AuthRepository {
   Future<AppUser> createUserWithEmailAndPassword({
     required String email,
     required String password,
+    String? displayName,
   });
+
+  Future<void> sendPasswordResetEmail(String email);
+
+  Future<void> updateDisplayName(String displayName);
 
   Future<void> signOut();
 }

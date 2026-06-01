@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../data/models/cricket_player.dart';
-import '../data/models/player_attributes.dart';
 import '../data/models/player_tier.dart';
 import '../theme/game_colors.dart';
 import 'player_card_image.dart';
@@ -25,12 +24,6 @@ Future<void> showFifaStylePlayerCard(
   );
 }
 
-String _positionLabel(PlayerAttributes a) {
-  if (a.batting - a.bowling >= 12) return 'BAT';
-  if (a.bowling - a.batting >= 12) return 'BWL';
-  return 'ALL';
-}
-
 class _FifaCardDialog extends StatelessWidget {
   const _FifaCardDialog({required this.player});
 
@@ -41,16 +34,12 @@ class _FifaCardDialog extends StatelessWidget {
     final maxDialogHeight = MediaQuery.sizeOf(context).height * 0.88;
     final a = player.attributes;
     final ovr = a.overall;
-    final pos = _positionLabel(a);
+    final pos = player.effectiveRole.shortLabel;
     const accent = GameColors.neon;
     const innerGradient = LinearGradient(
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
-      colors: [
-        Color(0xFF1e2836),
-        Color(0xFF121a14),
-        GameColors.card,
-      ],
+      colors: [Color(0xFF1e2836), Color(0xFF121a14), GameColors.card],
     );
 
     return Dialog(
@@ -106,7 +95,8 @@ class _FifaCardDialog extends StatelessWidget {
                                   clipBehavior: Clip.none,
                                   children: [
                                     PlayerCardImage(
-                                      imagePath: player.cardImageAsset,
+                                      imageAsset: player.cardImageAsset,
+                                      imageUrl: player.avatarUrl,
                                       isReal: player.isRealPlayer,
                                       playerName: player.displayName,
                                       topCornersOnly: true,
@@ -145,8 +135,15 @@ class _FifaCardDialog extends StatelessWidget {
                                 ),
                                 Container(
                                   width: double.infinity,
-                                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-                                  decoration: const BoxDecoration(gradient: innerGradient),
+                                  padding: const EdgeInsets.fromLTRB(
+                                    20,
+                                    16,
+                                    20,
+                                    20,
+                                  ),
+                                  decoration: const BoxDecoration(
+                                    gradient: innerGradient,
+                                  ),
                                   child: Column(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
@@ -162,9 +159,7 @@ class _FifaCardDialog extends StatelessWidget {
                                       ),
                                       const SizedBox(height: 6),
                                       Text(
-                                        player.isRealPlayer
-                                            ? 'VERIFIED'
-                                            : 'CUSTOM',
+                                        '${player.roleLabel.toUpperCase()} · ${player.countryLabel.toUpperCase()}',
                                         style: const TextStyle(
                                           color: _textSecondary,
                                           fontSize: 12,
@@ -174,14 +169,46 @@ class _FifaCardDialog extends StatelessWidget {
                                       ),
                                       const SizedBox(height: 2),
                                       Text(
-                                        player.playerTier == PlayerTier.premium ? 'PREMIUM' : 'FREE',
+                                        player.playerTier == PlayerTier.premium
+                                            ? 'PREMIUM'
+                                            : 'FREE',
                                         style: TextStyle(
-                                          color: _textMuted.withValues(alpha: 0.95),
+                                          color: _textMuted.withValues(
+                                            alpha: 0.95,
+                                          ),
                                           fontSize: 11,
                                           fontWeight: FontWeight.w700,
                                           letterSpacing: 0.6,
                                         ),
                                       ),
+                                      if ((player.battingStyle ?? '')
+                                              .trim()
+                                              .isNotEmpty ||
+                                          (player.bowlingStyle ?? '')
+                                              .trim()
+                                              .isNotEmpty) ...[
+                                        const SizedBox(height: 10),
+                                        Text(
+                                          [
+                                            if ((player.battingStyle ?? '')
+                                                .trim()
+                                                .isNotEmpty)
+                                              player.battingStyle!.trim(),
+                                            if ((player.bowlingStyle ?? '')
+                                                .trim()
+                                                .isNotEmpty)
+                                              player.bowlingStyle!.trim(),
+                                          ].join(' · '),
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                            color: _textMuted.withValues(
+                                              alpha: 0.95,
+                                            ),
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
                                       const SizedBox(height: 20),
                                       const Align(
                                         alignment: Alignment.centerLeft,

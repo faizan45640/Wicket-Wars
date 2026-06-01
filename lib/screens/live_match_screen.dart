@@ -1,5 +1,3 @@
-import 'dart:math';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -9,13 +7,10 @@ import '../data/match_delivery_engine.dart';
 import '../data/models/innings_result.dart';
 import '../data/models/match_result_args.dart';
 import '../data/models/match_room.dart';
-import '../data/models/match_summary.dart';
 import '../data/providers.dart';
-import '../data/repositories/squad_repository.dart';
 import '../theme/game_colors.dart';
 import '../widgets/game_bottom_nav.dart';
 
-/// T20 match: sequential innings, Firestore-backed state; each delivery uses [applyOneDelivery] inside [MatchRepository.transactRoom] on Firebase.
 class LiveMatchScreen extends ConsumerStatefulWidget {
   const LiveMatchScreen({super.key, required this.roomId});
 
@@ -26,236 +21,137 @@ class LiveMatchScreen extends ConsumerStatefulWidget {
 }
 
 class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen> {
-  final _rand = Random();
-  var _finishing = false;
-  var _busyBall = false;
-  var _bootstrapping = false;
+  var _busy = false;
+  var _resultOpening = false;
+  String? _error;
 
-  Future<void> _bootstrapIfNeeded(MatchRoom room) async {
-    if (_bootstrapping) return;
-    if (room.status == MatchRoomStatus.completed) return;
-    if (room.guestUid == null || room.guestUid!.isEmpty) return;
-
-    _bootstrapping = true;
-    try {
-      final repo = ref.read(matchRepositoryProvider);
-      var r = await repo.getRoom(room.roomId);
-      if (!mounted || r == null) return;
-
-      final squadRepo = ref.read(squadRepositoryProvider);
-      final hostXi = await _pickXi(squadRepo, r.hostUid);
-      final guestXi = await _pickXi(squadRepo, r.guestUid);
-
-      var changed = false;
-      if (!r.hostXiLocked || r.hostPlayingXi.isEmpty) {
-        r = r.copyWith(hostPlayingXi: hostXi, hostXiLocked: true);
-        changed = true;
-      }
-      if (!r.guestXiLocked || r.guestPlayingXi.isEmpty) {
-        r = r.copyWith(guestPlayingXi: guestXi, guestXiLocked: true);
-        changed = true;
-      }
-      if (r.status == MatchRoomStatus.waitingGuest ||
-          r.status == MatchRoomStatus.selectingXi) {
-        r = r.copyWith(status: MatchRoomStatus.inProgress);
-        changed = true;
-      }
-      if (r.hostBatFirst == null) {
-        final batFirst = _rand.nextBool();
-        final startMsg =
-            'Toss — ${batFirst ? 'Host' : 'Guest'} bats first. T20: 20 overs max per innings. Tap “Next delivery”.';
-        var tail = [...r.commentaryTail, startMsg];
-        if (tail.length > 30) tail = tail.sublist(tail.length - 30);
-        r = r.copyWith(
-          hostBatFirst: batFirst,
-          inningsNumber: 1,
-          chaseTarget: null,
-          hostRuns: 0,
-          guestRuns: 0,
-          hostWickets: 0,
-          guestWickets: 0,
-          hostLegalBalls: 0,
-          guestLegalBalls: 0,
-          commentaryTail: tail,
-        );
-        changed = true;
-      }
-      if (changed) await repo.saveRoom(r);
-    } finally {
-      if (mounted) _bootstrapping = false;
-    }
-  }
-
-  Future<List<String>> _pickXi(SquadRepository squadRepo, String? uid) async {
-    if (uid == null || uid.isEmpty) return [];
-    final list = await squadRepo.getSquad(uid);
-    final sorted = [...list]..sort((a, b) => b.attributes.overall.compareTo(a.attributes.overall));
-    return sorted.take(11).map((p) => p.id).toList();
-  }
-
-  Future<void> _nextDelivery() async {
-    if (_busyBall || _finishing) return;
-    final repo = ref.read(matchRepositoryProvider);
-    var room = await repo.getRoom(widget.roomId);
-    if (!mounted || room == null || room.status == MatchRoomStatus.completed) return;
-    if (room.hostBatFirst == null) {
-      await _bootstrapIfNeeded(room);
-      room = await repo.getRoom(widget.roomId);
-      if (!mounted || room == null || room.hostBatFirst == null) return;
-    }
-
-    final strikerAtCall = battingIsHost(room);
-    final br = strikerAtCall ? room.hostRuns : room.guestRuns;
-    if (room.inningsNumber == 2 &&
-        room.chaseTarget != null &&
-        br >= room.chaseTarget!) {
-      await _tryFinalize(room);
-      return;
-    }
-
-    _busyBall = true;
-    try {
-      final after = await repo.transactRoom(widget.roomId, (current) {
-        return applyOneDelivery(current, _rand);
-      });
-      if (!mounted || after == null) return;
-
-      if (after.inningsNumber == 2 &&
-          shouldAutoCompleteMatchAfterDelivery(
-            after,
-            strikerWasHost: battingIsHost(after),
-          )) {
-        await _tryFinalize(after);
-      }
-    } finally {
-      if (mounted) _busyBall = false;
-    }
-  }
-
-  Future<void> _tryFinalize(MatchRoom room) async {
-    if (room.status == MatchRoomStatus.completed) return;
-    await _completeMatch(room);
-  }
-
-  Future<void> _completeMatch(MatchRoom room) async {
+  Future<void> _lockMyXi(MatchRoom room) async {
     final uid = ref.read(currentUidProvider);
-    if (uid == null || !mounted) return;
+    if (uid == null || _busy) return;
+    final isHost = room.hostUid == uid;
+    final isGuest = room.guestUid == uid;
+    if (!isHost && !isGuest) return;
 
-    setState(() => _finishing = true);
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
     try {
-      final userRepo = ref.read(userRepositoryProvider);
-      final oppUid =
-          room.hostUid == uid ? room.guestUid : room.hostUid;
-      var oppName = 'Practice opponent';
-      if (oppUid != null && oppUid.isNotEmpty) {
-        final oppProfile = await userRepo.getProfile(oppUid);
-        oppName = oppProfile?.displayName ?? 'Opponent';
-      }
-
-      final profile = await userRepo.getProfile(uid);
-      final yourName = profile?.displayName ?? 'You';
-
-      final hUid = room.hostUid;
-      final gUid = room.guestUid;
-      final hostName =
-          hUid != null ? (await userRepo.getProfile(hUid))?.displayName ?? 'Host' : 'Host';
-      final guestName =
-          gUid != null ? (await userRepo.getProfile(gUid))?.displayName ?? 'Guest' : 'Guest';
-
-      final youHost = room.hostUid == uid;
-      final myRuns = youHost ? room.hostRuns : room.guestRuns;
-      final oppRuns = youHost ? room.guestRuns : room.hostRuns;
-
-      final won = myRuns > oppRuns;
-      final tie = myRuns == oppRuns;
-      final coins = tie
-          ? 35 + (myRuns ~/ 3)
-          : 40 + (won ? 90 : 15) + (myRuns ~/ 3);
-      final xp = tie ? 18 : (won ? 30 : 12);
-
-      final hostBatFirst = room.hostBatFirst ?? true;
-      final firstName = hostBatFirst ? hostName : guestName;
-      final secondName = hostBatFirst ? guestName : hostName;
-      final firstRuns = hostBatFirst ? room.hostRuns : room.guestRuns;
-      final firstWkts = hostBatFirst ? room.hostWickets : room.guestWickets;
-      final firstBalls = hostBatFirst ? room.hostLegalBalls : room.guestLegalBalls;
-      final secondRuns = hostBatFirst ? room.guestRuns : room.hostRuns;
-      final secondWkts = hostBatFirst ? room.guestWickets : room.hostWickets;
-      final secondBalls = hostBatFirst ? room.guestLegalBalls : room.hostLegalBalls;
-
-      final innings1 = InningsResult(
-        teamName: firstName,
-        runs: firstRuns,
-        wicketsDown: firstWkts,
-        legalBallsFaced: firstBalls.clamp(1, 120),
-        battedFirst: true,
-      );
-      final innings2 = InningsResult(
-        teamName: secondName,
-        runs: secondRuns,
-        wicketsDown: secondWkts,
-        legalBallsFaced: secondBalls.clamp(1, 120),
-        battedFirst: false,
-      );
-
-      final headline = tie
-          ? 'MATCH TIED — $myRuns runs each'
-          : (won ? '$yourName WINS' : '$oppName WINS');
-
-      await ref.read(matchHistoryRepositoryProvider).append(
-            uid,
-            MatchSummary(
-              matchId: '${room.roomId}_${DateTime.now().millisecondsSinceEpoch}',
-              completedAt: DateTime.now(),
-              opponentDisplayName: oppName,
-              won: won && !tie,
-              runsFor: myRuns,
-              runsAgainst: oppRuns,
-              coinsEarned: coins,
-              xpEarned: xp,
-            ),
-          );
-
-      if (profile != null) {
-        await userRepo.upsertProfile(
-          profile.copyWith(
-            wins: profile.wins + (won && !tie ? 1 : 0),
-            losses: profile.losses + (!won && !tie ? 1 : 0),
-            matchesPlayed: profile.matchesPlayed + 1,
-            coins: profile.coins + coins,
-            rankingPoints: profile.rankingPoints + xp,
-            totalRunsScored: profile.totalRunsScored + myRuns,
-          ),
-        );
-      }
-
-      await ref.read(matchRepositoryProvider).saveRoom(
-            room.copyWith(
-              status: MatchRoomStatus.completed,
-              completedAt: DateTime.now(),
-            ),
-          );
-
-      if (!mounted) return;
-      final args = MatchResultArgs(
-        youWon: won && !tie,
-        innings1: innings1,
-        innings2: innings2,
-        headline: headline,
-        coinsEarned: coins,
-        xpEarned: xp,
-      );
-      context.pushReplacement('/match/result', extra: args);
+      await ref
+          .read(matchRepositoryProvider)
+          .lockStrongestXi(roomId: room.roomId);
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
     } finally {
-      if (mounted) setState(() => _finishing = false);
+      if (mounted) setState(() => _busy = false);
     }
   }
 
-  Future<void> _forceEndAndSave() async {
-    final repo = ref.read(matchRepositoryProvider);
-    final room = await repo.getRoom(widget.roomId);
-    if (!mounted || room == null || room.status == MatchRoomStatus.completed) return;
-    await _completeMatch(room);
+  Future<void> _nextDelivery(MatchRoom room) async {
+    if (_busy || room.status != MatchRoomStatus.inProgress) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await ref
+          .read(matchRepositoryProvider)
+          .advanceDelivery(roomId: room.roomId);
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _forceEnd(MatchRoom room) async {
+    if (_busy || room.status == MatchRoomStatus.completed) return;
+    setState(() => _busy = true);
+    try {
+      await ref
+          .read(matchRepositoryProvider)
+          .forceComplete(roomId: room.roomId);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _openResult(MatchRoom room) async {
+    final uid = ref.read(currentUidProvider);
+    if (uid == null || _resultOpening) return;
+    _resultOpening = true;
+    try {
+      await ref.read(matchRepositoryProvider).claimResult(roomId: room.roomId);
+      if (!mounted) return;
+      context.push('/match/result', extra: await _resultArgs(room, uid));
+    } finally {
+      _resultOpening = false;
+    }
+  }
+
+  Future<MatchResultArgs> _resultArgs(MatchRoom room, String uid) async {
+    final userRepo = ref.read(userRepositoryProvider);
+    final hostName =
+        room.hostUid == null
+            ? 'Host'
+            : (await userRepo.getProfile(room.hostUid!))?.displayName ?? 'Host';
+    final guestName =
+        room.guestUid == null
+            ? 'Guest'
+            : (await userRepo.getProfile(room.guestUid!))?.displayName ??
+                'Guest';
+    final hostFirst = room.hostBatFirst ?? true;
+    final stats = _rewardStats(room, uid);
+    final firstName = hostFirst ? hostName : guestName;
+    final secondName = hostFirst ? guestName : hostName;
+    return MatchResultArgs(
+      youWon: stats.won,
+      headline:
+          stats.tie
+              ? 'MATCH TIED - ${stats.runsFor} runs each'
+              : (stats.won ? 'YOU WIN' : 'YOU LOSE'),
+      coinsEarned: stats.coins,
+      xpEarned: stats.xp,
+      innings1: InningsResult(
+        teamName: firstName,
+        runs: hostFirst ? room.hostRuns : room.guestRuns,
+        wicketsDown: hostFirst ? room.hostWickets : room.guestWickets,
+        legalBallsFaced: (hostFirst
+                ? room.hostLegalBalls
+                : room.guestLegalBalls)
+            .clamp(1, 120),
+        battedFirst: true,
+      ),
+      innings2: InningsResult(
+        teamName: secondName,
+        runs: hostFirst ? room.guestRuns : room.hostRuns,
+        wicketsDown: hostFirst ? room.guestWickets : room.hostWickets,
+        legalBallsFaced: (hostFirst
+                ? room.guestLegalBalls
+                : room.hostLegalBalls)
+            .clamp(1, 120),
+        battedFirst: false,
+      ),
+    );
+  }
+
+  _RewardStats _rewardStats(MatchRoom room, String uid) {
+    final youHost = room.hostUid == uid;
+    final runsFor = youHost ? room.hostRuns : room.guestRuns;
+    final runsAgainst = youHost ? room.guestRuns : room.hostRuns;
+    final tie = runsFor == runsAgainst;
+    final won = !tie && runsFor > runsAgainst;
+    final coins =
+        tie ? 35 + (runsFor ~/ 3) : 40 + (won ? 90 : 15) + (runsFor ~/ 3);
+    final xp = tie ? 18 : (won ? 30 : 12);
+    return _RewardStats(
+      runsFor: runsFor,
+      runsAgainst: runsAgainst,
+      won: won,
+      tie: tie,
+      coins: coins,
+      xp: xp,
+    );
   }
 
   @override
@@ -277,67 +173,60 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen> {
         ),
         leading: IconButton(
           icon: const Icon(Icons.close_rounded, color: GameColors.neon),
-          onPressed: () => context.go('/'),
+          onPressed: () => context.go('/matches'),
         ),
       ),
       body: roomAsync.when(
-        loading: () => const Center(
-          child: CircularProgressIndicator(color: GameColors.neon),
-        ),
-        error: (e, _) => Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Text('Could not load room: $e', style: TextStyle(color: Colors.red.shade200)),
-          ),
-        ),
+        loading:
+            () => const Center(
+              child: CircularProgressIndicator(color: GameColors.neon),
+            ),
+        error:
+            (e, _) => Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  'Could not load room: $e',
+                  style: TextStyle(color: Colors.red.shade200),
+                ),
+              ),
+            ),
         data: (room) {
           if (room == null) {
             return const Center(
-              child: Text('Room not found', style: TextStyle(color: Colors.white70)),
+              child: Text(
+                'Room not found',
+                style: TextStyle(color: Colors.white70),
+              ),
             );
           }
           if (uid == null) {
             return const Center(
-              child: Text('Not signed in', style: TextStyle(color: Colors.white70)),
+              child: Text(
+                'Not signed in',
+                style: TextStyle(color: Colors.white70),
+              ),
             );
           }
-
-          if (room.guestUid == null || room.guestUid!.isEmpty) {
-            return ListView(
-              padding: const EdgeInsets.all(20),
-              children: [
-                const Text(
-                  'Waiting for an opponent to join this room with the code.',
-                  style: TextStyle(color: Colors.white70),
-                ),
-              ],
-            );
-          }
-
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (room.status != MatchRoomStatus.completed) {
-              _bootstrapIfNeeded(room);
-            }
-          });
-
+          final isParticipant = room.hostUid == uid || room.guestUid == uid;
           final youHost = room.hostUid == uid;
-          final hostLabel = youHost ? 'You (host)' : 'Host';
-          final guestLabel = !youHost && room.guestUid == uid
-              ? 'You (guest)'
-              : (room.guestUid != null && room.guestUid!.isNotEmpty ? 'Guest' : 'Guest (open)');
-
-          final tossed = room.hostBatFirst != null;
-          final battingHost = tossed ? battingIsHost(room) : null;
-          final phaseLabel = !tossed
-              ? 'Starting…'
-              : (room.inningsNumber == 1 ? '1st innings' : '2nd innings (chase)');
-          final chase = room.chaseTarget;
+          final myLocked = youHost ? room.hostXiLocked : room.guestXiLocked;
+          final phaseLabel = _phaseLabel(room);
+          final battingHost =
+              room.hostBatFirst == null ? null : battingIsHost(room);
 
           return ListView(
             padding: const EdgeInsets.all(20),
             children: [
+              if (_error != null) ...[
+                Text(
+                  _error!,
+                  style: TextStyle(color: Colors.red.shade200, fontSize: 13),
+                ),
+                const SizedBox(height: 12),
+              ],
               Text(
-                'Room ${room.roomCode} · ${room.pitch.name} pitch',
+                'Room ${room.roomCode} - ${room.pitch.name} pitch',
                 style: TextStyle(
                   color: GameColors.muted.withValues(alpha: 0.9),
                   fontWeight: FontWeight.w600,
@@ -345,85 +234,121 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                phaseLabel +
-                    (chase != null && room.inningsNumber == 2 ? ' · Target $chase' : ''),
-                style: const TextStyle(color: GameColors.neon, fontWeight: FontWeight.w800),
+                phaseLabel,
+                style: const TextStyle(
+                  color: GameColors.neon,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
-              if (tossed && battingHost != null)
+              if (battingHost != null)
                 Text(
-                  'Batting: ${battingHost ? hostLabel : guestLabel}',
-                  style: TextStyle(color: GameColors.muted.withValues(alpha: 0.95), fontSize: 13),
+                  'Batting: ${battingHost ? 'Host' : 'Guest'}',
+                  style: TextStyle(
+                    color: GameColors.muted.withValues(alpha: 0.95),
+                    fontSize: 13,
+                  ),
                 ),
               const SizedBox(height: 12),
               Row(
                 children: [
                   Expanded(
                     child: _scoreCard(
-                      '$hostLabel\n${room.hostRuns}/${room.hostWickets}\n${formatOversFromBalls(room.hostLegalBalls)}',
-                      GameColors.neon,
+                      'Host\n${room.hostRuns}/${room.hostWickets}\n${formatOversFromBalls(room.hostLegalBalls)}',
+                      youHost ? GameColors.neon : Colors.white70,
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: _scoreCard(
-                      '$guestLabel\n${room.guestRuns}/${room.guestWickets}\n${formatOversFromBalls(room.guestLegalBalls)}',
-                      Colors.cyanAccent,
+                      'Guest\n${room.guestRuns}/${room.guestWickets}\n${formatOversFromBalls(room.guestLegalBalls)}',
+                      !youHost && room.guestUid == uid
+                          ? GameColors.neon
+                          : Colors.cyanAccent,
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 16),
-              Text(
-                'Host XI: ${room.hostPlayingXi.length} · Guest XI: ${room.guestPlayingXi.length} (auto top 11 by OVR)',
-                style: TextStyle(color: GameColors.muted.withValues(alpha: 0.9), fontSize: 12),
-              ),
+              _lockStatus(room),
               const SizedBox(height: 16),
-              Text(
-                'Each tap runs one legal delivery for the current innings (both players can use the same device or take turns online — Firestore keeps state).',
-                style: TextStyle(color: GameColors.muted.withValues(alpha: 0.95), fontSize: 13, height: 1.35),
-              ),
-              const SizedBox(height: 12),
-              FilledButton(
-                onPressed: _finishing ||
-                        room.status == MatchRoomStatus.completed ||
-                        !tossed ||
-                        _busyBall
-                    ? null
-                    : _nextDelivery,
-                style: FilledButton.styleFrom(
-                  backgroundColor: GameColors.neon,
-                  foregroundColor: GameColors.onNeonButton,
-                  padding: const EdgeInsets.symmetric(vertical: 18),
+              if (!isParticipant)
+                const Text(
+                  'Viewer mode: watch the live scoreboard and commentary.',
+                  style: TextStyle(color: Colors.white70),
+                )
+              else if (room.guestUid == null || room.guestUid!.isEmpty)
+                const Text(
+                  'Waiting for the opponent to join with this room code.',
+                  style: TextStyle(color: Colors.white70),
+                )
+              else if (room.status == MatchRoomStatus.completed)
+                FilledButton(
+                  onPressed: _busy ? null : () => _openResult(room),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: GameColors.neon,
+                    foregroundColor: GameColors.onNeonButton,
+                    padding: const EdgeInsets.symmetric(vertical: 18),
+                  ),
+                  child: const Text(
+                    'VIEW RESULT',
+                    style: TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                )
+              else if (!myLocked)
+                FilledButton(
+                  onPressed: _busy ? null : () => _lockMyXi(room),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: GameColors.neon,
+                    foregroundColor: GameColors.onNeonButton,
+                    padding: const EdgeInsets.symmetric(vertical: 18),
+                  ),
+                  child: const Text(
+                    'LOCK STRONGEST XI',
+                    style: TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                )
+              else if (!room.hostXiLocked || !room.guestXiLocked)
+                const Text(
+                  'Your XI is locked. Waiting for the other player.',
+                  style: TextStyle(color: Colors.white70),
+                )
+              else ...[
+                FilledButton(
+                  onPressed:
+                      _busy || room.hostBatFirst == null
+                          ? null
+                          : () => _nextDelivery(room),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: GameColors.neon,
+                    foregroundColor: GameColors.onNeonButton,
+                    padding: const EdgeInsets.symmetric(vertical: 18),
+                  ),
+                  child:
+                      _busy
+                          ? const SizedBox(
+                            height: 22,
+                            width: 22,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: GameColors.onNeonButton,
+                            ),
+                          )
+                          : const Text(
+                            'NEXT DELIVERY',
+                            style: TextStyle(fontWeight: FontWeight.w900),
+                          ),
                 ),
-                child: _busyBall
-                    ? const SizedBox(
-                        height: 22,
-                        width: 22,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: GameColors.onNeonButton),
-                      )
-                    : const Text(
-                        'NEXT DELIVERY',
-                        style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
-                      ),
-              ),
-              const SizedBox(height: 12),
-              FilledButton(
-                onPressed: _finishing || room.status == MatchRoomStatus.completed
-                    ? null
-                    : _forceEndAndSave,
-                style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF4A2C2C),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
+                const SizedBox(height: 12),
+                OutlinedButton(
+                  onPressed: _busy ? null : () => _forceEnd(room),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.red.shade200,
+                    side: BorderSide(color: Colors.red.shade200),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  child: const Text('END MATCH NOW'),
                 ),
-                child: _finishing
-                    ? const SizedBox(
-                        height: 22,
-                        width: 22,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                      )
-                    : const Text('END MATCH NOW (current scores)'),
-              ),
+              ],
               if (room.commentaryTail.isNotEmpty) ...[
                 const SizedBox(height: 24),
                 const Text(
@@ -435,10 +360,18 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                ...room.commentaryTail.reversed.take(10).map(
+                ...room.commentaryTail.reversed
+                    .take(12)
+                    .map(
                       (line) => Padding(
                         padding: const EdgeInsets.only(bottom: 6),
-                        child: Text(line, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                        child: Text(
+                          line,
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 13,
+                          ),
+                        ),
                       ),
                     ),
               ],
@@ -447,6 +380,72 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen> {
         },
       ),
       bottomNavigationBar: const GameBottomNav(selectedIndex: 2),
+    );
+  }
+
+  static String _phaseLabel(MatchRoom room) {
+    if (room.status == MatchRoomStatus.completed) return 'Completed';
+    if (room.guestUid == null || room.guestUid!.isEmpty) {
+      return 'Waiting for guest';
+    }
+    if (!room.hostXiLocked || !room.guestXiLocked) return 'Selecting XI';
+    if (room.hostBatFirst == null) return 'Starting match';
+    final target = room.chaseTarget;
+    return room.inningsNumber == 1
+        ? '1st innings'
+        : '2nd innings${target == null ? '' : ' - Target $target'}';
+  }
+
+  static Widget _lockStatus(MatchRoom room) {
+    return Row(
+      children: [
+        Expanded(
+          child: _pill(
+            'Host XI',
+            room.hostXiLocked
+                ? '${room.hostPlayingXi.length}/11 locked'
+                : 'Not locked',
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _pill(
+            'Guest XI',
+            room.guestXiLocked
+                ? '${room.guestPlayingXi.length}/11 locked'
+                : 'Not locked',
+          ),
+        ),
+      ],
+    );
+  }
+
+  static Widget _pill(String label, String value) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: GameColors.card,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: GameColors.cardBorder),
+      ),
+      child: Column(
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              color: GameColors.muted,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Colors.white, fontSize: 12),
+          ),
+        ],
+      ),
     );
   }
 
@@ -470,4 +469,22 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen> {
       ),
     );
   }
+}
+
+class _RewardStats {
+  const _RewardStats({
+    required this.runsFor,
+    required this.runsAgainst,
+    required this.won,
+    required this.tie,
+    required this.coins,
+    required this.xp,
+  });
+
+  final int runsFor;
+  final int runsAgainst;
+  final bool won;
+  final bool tie;
+  final int coins;
+  final int xp;
 }

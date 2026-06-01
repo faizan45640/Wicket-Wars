@@ -4,7 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../auth/auth_messages.dart';
+import '../auth/auth_validators.dart';
 import '../auth/password_crypto.dart';
+import '../data/onboarding_seed.dart';
 import '../data/providers.dart';
 import '../theme/game_colors.dart';
 import '../widgets/auth_error_banner.dart';
@@ -18,6 +20,7 @@ class SignupScreen extends ConsumerStatefulWidget {
 
 class _SignupScreenState extends ConsumerState<SignupScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _displayName = TextEditingController();
   final _email = TextEditingController();
   final _password = TextEditingController();
   final _confirm = TextEditingController();
@@ -32,6 +35,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
 
   @override
   void dispose() {
+    _displayName.dispose();
     _email.dispose();
     _password.dispose();
     _confirm.dispose();
@@ -46,14 +50,23 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     });
     try {
       final encrypted = PasswordCrypto.encryptPassword(_password.text);
-      final passwordForAuth =
-          PasswordCrypto.decryptPassword(encrypted);
-      await ref.read(authRepositoryProvider).createUserWithEmailAndPassword(
+      final passwordForAuth = PasswordCrypto.decryptPassword(encrypted);
+      final user = await ref
+          .read(authRepositoryProvider)
+          .createUserWithEmailAndPassword(
             email: _email.text,
             password: passwordForAuth,
+            displayName: _displayName.text,
           );
+      await ensureStarterData(
+        userRepository: ref.read(userRepositoryProvider),
+        squadRepository: ref.read(squadRepositoryProvider),
+        uid: user.uid,
+        email: _email.text,
+        displayName: _displayName.text,
+      );
       if (!mounted) return;
-      context.go('/');
+      context.go('/starter-pack');
     } catch (e) {
       if (!mounted) return;
       HapticFeedback.mediumImpact();
@@ -73,7 +86,16 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
         scrolledUnderElevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded, color: GameColors.neon),
-          onPressed: _loading ? null : () => context.pop(),
+          onPressed:
+              _loading
+                  ? null
+                  : () {
+                    if (context.canPop()) {
+                      context.pop();
+                    } else {
+                      context.go('/login');
+                    }
+                  },
         ),
       ),
       body: SafeArea(
@@ -99,17 +121,17 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                         letterSpacing: 0.8,
                       ),
                     ),
-                    const SizedBox(height: 10),
-                    Text(
-                      'Creates your Firebase account and signs you in.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: GameColors.muted.withValues(alpha: 0.92),
-                        fontSize: 13,
-                        height: 1.45,
-                      ),
-                    ),
                     const SizedBox(height: 32),
+                    TextFormField(
+                      controller: _displayName,
+                      textCapitalization: TextCapitalization.words,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: _fieldDecoration('Display name'),
+                      autofillHints: const [AutofillHints.name],
+                      onChanged: (_) => _clearAuthError(),
+                      validator: AuthValidators.displayName,
+                    ),
+                    const SizedBox(height: 16),
                     TextFormField(
                       controller: _email,
                       keyboardType: TextInputType.emailAddress,
@@ -117,15 +139,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                       decoration: _fieldDecoration('Email'),
                       autofillHints: const [AutofillHints.email],
                       onChanged: (_) => _clearAuthError(),
-                      validator: (v) {
-                        if (v == null || v.trim().isEmpty) {
-                          return 'Enter an email';
-                        }
-                        if (!v.contains('@')) {
-                          return 'Enter a valid email';
-                        }
-                        return null;
-                      },
+                      validator: AuthValidators.email,
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
@@ -145,12 +159,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                       ),
                       autofillHints: const [AutofillHints.newPassword],
                       onChanged: (_) => _clearAuthError(),
-                      validator: (v) {
-                        if (v == null || v.length < 6) {
-                          return 'At least 6 characters (Firebase rule)';
-                        }
-                        return null;
-                      },
+                      validator: AuthValidators.newPassword,
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
@@ -159,7 +168,8 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                       style: const TextStyle(color: Colors.white),
                       decoration: _fieldDecoration('Confirm password').copyWith(
                         suffixIcon: IconButton(
-                          onPressed: () => setState(() => _obscure2 = !_obscure2),
+                          onPressed:
+                              () => setState(() => _obscure2 = !_obscure2),
                           icon: Icon(
                             _obscure2
                                 ? Icons.visibility_outlined
@@ -195,22 +205,23 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                           borderRadius: BorderRadius.circular(14),
                         ),
                       ),
-                      child: _loading
-                          ? SizedBox(
-                              height: 22,
-                              width: 22,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: GameColors.onNeonButton,
+                      child:
+                          _loading
+                              ? SizedBox(
+                                height: 22,
+                                width: 22,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: GameColors.onNeonButton,
+                                ),
+                              )
+                              : const Text(
+                                'CREATE ACCOUNT',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 0.5,
+                                ),
                               ),
-                            )
-                          : const Text(
-                              'CREATE ACCOUNT',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
                     ),
                     const SizedBox(height: 16),
                     Row(
@@ -224,7 +235,16 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                           ),
                         ),
                         TextButton(
-                          onPressed: _loading ? null : () => context.pop(),
+                          onPressed:
+                              _loading
+                                  ? null
+                                  : () {
+                                    if (context.canPop()) {
+                                      context.pop();
+                                    } else {
+                                      context.go('/login');
+                                    }
+                                  },
                           style: TextButton.styleFrom(
                             foregroundColor: GameColors.neon,
                             padding: const EdgeInsets.symmetric(horizontal: 8),

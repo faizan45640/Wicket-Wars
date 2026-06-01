@@ -2,17 +2,23 @@ import 'package:flutter/material.dart';
 
 import '../theme/game_colors.dart';
 
-/// Card art: real = PNG in [imagePath] (transparent background works best, [BoxFit.contain]);
+/// Card art: local PNG in [imageAsset] or remote [imageUrl].
 /// custom = “ghost” silhouette like FIFA; empty path on real = same ghost until you add a PNG.
 class PlayerCardImage extends StatelessWidget {
   const PlayerCardImage({
     super.key,
+    this.imageAsset,
+    this.imageUrl,
     this.imagePath,
     required this.isReal,
     this.playerName,
     this.topCornersOnly = false,
   });
 
+  final String? imageAsset;
+  final String? imageUrl;
+
+  /// Backward-compatible alias for older call sites. Prefer [imageAsset].
   final String? imagePath;
   final bool isReal;
   final String? playerName;
@@ -23,19 +29,23 @@ class PlayerCardImage extends StatelessWidget {
   static const double _aspectWidth = 3;
   static const double _aspectHeight = 4;
 
-  BorderRadius get _radius => topCornersOnly
-      ? const BorderRadius.only(
-          topLeft: Radius.circular(12),
-          topRight: Radius.circular(12),
-        )
-      : BorderRadius.circular(12);
+  BorderRadius get _radius =>
+      topCornersOnly
+          ? const BorderRadius.only(
+            topLeft: Radius.circular(12),
+            topRight: Radius.circular(12),
+          )
+          : BorderRadius.circular(12);
 
   @override
   Widget build(BuildContext context) {
-    final path = imagePath?.trim() ?? '';
+    final asset = (imageAsset ?? imagePath)?.trim() ?? '';
+    final url = imageUrl?.trim() ?? '';
     final Widget child;
-    if (isReal && path.isNotEmpty) {
-      child = _RealPlayerPng(path: path);
+    if (asset.isNotEmpty) {
+      child = _AssetPlayerImage(path: asset, isReal: isReal);
+    } else if (url.isNotEmpty) {
+      child = _RemotePlayerImage(url: url, isReal: isReal);
     } else if (isReal) {
       child = const _FifaRealSilhouette();
     } else {
@@ -46,19 +56,17 @@ class PlayerCardImage extends StatelessWidget {
       label: playerName ?? (isReal ? 'Player card' : 'Unknown player'),
       child: AspectRatio(
         aspectRatio: _aspectWidth / _aspectHeight,
-        child: ClipRRect(
-          borderRadius: _radius,
-          child: child,
-        ),
+        child: ClipRRect(borderRadius: _radius, child: child),
       ),
     );
   }
 }
 
-class _RealPlayerPng extends StatelessWidget {
-  const _RealPlayerPng({required this.path});
+class _AssetPlayerImage extends StatelessWidget {
+  const _AssetPlayerImage({required this.path, required this.isReal});
 
   final String path;
+  final bool isReal;
 
   @override
   Widget build(BuildContext context) {
@@ -68,7 +76,56 @@ class _RealPlayerPng extends StatelessWidget {
         path,
         fit: BoxFit.contain,
         alignment: Alignment.bottomCenter,
-        errorBuilder: (_, __, ___) => const _FifaRealSilhouette(),
+        errorBuilder:
+            (_, __, ___) =>
+                isReal
+                    ? const _FifaRealSilhouette()
+                    : const _FifaCustomSilhouette(),
+      ),
+    );
+  }
+}
+
+class _RemotePlayerImage extends StatelessWidget {
+  const _RemotePlayerImage({required this.url, required this.isReal});
+
+  final String url;
+  final bool isReal;
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: const Color(0xFF080A08),
+      child: Image.network(
+        url,
+        fit: BoxFit.contain,
+        alignment: Alignment.bottomCenter,
+        loadingBuilder: (context, child, progress) {
+          if (progress == null) return child;
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              isReal
+                  ? const _FifaRealSilhouette()
+                  : const _FifaCustomSilhouette(),
+              const Center(
+                child: SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: GameColors.neon,
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+        errorBuilder:
+            (_, __, ___) =>
+                isReal
+                    ? const _FifaRealSilhouette()
+                    : const _FifaCustomSilhouette(),
       ),
     );
   }
@@ -109,11 +166,7 @@ class _FifaFigureLayer extends StatelessWidget {
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [
-                Color(0xFF0A100C),
-                Color(0xFF040604),
-                Color(0xFF0B120E),
-              ],
+              colors: [Color(0xFF0A100C), Color(0xFF040604), Color(0xFF0B120E)],
             ),
           ),
         ),
@@ -142,11 +195,7 @@ class _FifaFigureLayer extends StatelessWidget {
             opacity: 0.18,
             child: Transform.translate(
               offset: const Offset(0, 6),
-              child: Icon(
-                Icons.person,
-                size: 120,
-                color: Colors.white,
-              ),
+              child: Icon(Icons.person, size: 120, color: Colors.white),
             ),
           ),
         ),
@@ -155,11 +204,7 @@ class _FifaFigureLayer extends StatelessWidget {
             opacity: 0.32,
             child: Transform.translate(
               offset: const Offset(0, 6),
-              child: Icon(
-                Icons.person,
-                size: 120,
-                color: GameColors.neon,
-              ),
+              child: Icon(Icons.person, size: 120, color: GameColors.neon),
             ),
           ),
         ),

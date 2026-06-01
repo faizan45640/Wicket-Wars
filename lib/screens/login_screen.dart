@@ -4,7 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../auth/auth_messages.dart';
+import '../auth/auth_validators.dart';
 import '../auth/password_crypto.dart';
+import '../data/onboarding_seed.dart';
 import '../data/providers.dart';
 import '../theme/game_colors.dart';
 import '../widgets/auth_error_banner.dart';
@@ -22,6 +24,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _password = TextEditingController();
   var _obscure = true;
   var _loading = false;
+  var _resetLoading = false;
   String? _authError;
 
   void _clearAuthError() {
@@ -43,12 +46,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     });
     try {
       final encrypted = PasswordCrypto.encryptPassword(_password.text);
-      final passwordForAuth =
-          PasswordCrypto.decryptPassword(encrypted);
-      await ref.read(authRepositoryProvider).signInWithEmailAndPassword(
+      final passwordForAuth = PasswordCrypto.decryptPassword(encrypted);
+      final user = await ref
+          .read(authRepositoryProvider)
+          .signInWithEmailAndPassword(
             email: _email.text,
             password: passwordForAuth,
           );
+      await ensureStarterData(
+        userRepository: ref.read(userRepositoryProvider),
+        squadRepository: ref.read(squadRepositoryProvider),
+        uid: user.uid,
+        email: user.email ?? _email.text,
+      );
       if (!mounted) return;
       context.go('/');
     } catch (e) {
@@ -57,6 +67,36 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       setState(() => _authError = authErrorMessage(e));
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _sendPasswordReset() async {
+    final emailError = AuthValidators.email(_email.text);
+    if (emailError != null) {
+      setState(() => _authError = emailError);
+      HapticFeedback.mediumImpact();
+      return;
+    }
+    setState(() {
+      _resetLoading = true;
+      _authError = null;
+    });
+    try {
+      await ref
+          .read(authRepositoryProvider)
+          .sendPasswordResetEmail(_email.text.trim());
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Password reset link sent to ${_email.text.trim()}'),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      HapticFeedback.mediumImpact();
+      setState(() => _authError = authErrorMessage(e));
+    } finally {
+      if (mounted) setState(() => _resetLoading = false);
     }
   }
 
@@ -86,16 +126,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         letterSpacing: 1.2,
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Sign in to continue',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: GameColors.muted.withValues(alpha: 0.95),
-                        fontSize: 15,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
                     const SizedBox(height: 40),
                     TextFormField(
                       key: const Key('login_email'),
@@ -105,12 +135,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       style: const TextStyle(color: Colors.white),
                       decoration: _fieldDecoration('Email'),
                       onChanged: (_) => _clearAuthError(),
-                      validator: (v) {
-                        if (v == null || v.trim().isEmpty) {
-                          return 'Enter your email';
-                        }
-                        return null;
-                      },
+                      validator: AuthValidators.email,
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
@@ -131,12 +156,27 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         ),
                       ),
                       onChanged: (_) => _clearAuthError(),
-                      validator: (v) {
-                        if (v == null || v.isEmpty) {
-                          return 'Enter your password';
-                        }
-                        return null;
-                      },
+                      validator: AuthValidators.loginPassword,
+                    ),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed:
+                            (_loading || _resetLoading)
+                                ? null
+                                : _sendPasswordReset,
+                        child:
+                            _resetLoading
+                                ? const SizedBox(
+                                  height: 16,
+                                  width: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: GameColors.neon,
+                                  ),
+                                )
+                                : const Text('Forgot password?'),
+                      ),
                     ),
                     if (_authError != null) ...[
                       const SizedBox(height: 16),
@@ -157,33 +197,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           borderRadius: BorderRadius.circular(14),
                         ),
                       ),
-                      child: _loading
-                          ? SizedBox(
-                              height: 22,
-                              width: 22,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: GameColors.onNeonButton,
+                      child:
+                          _loading
+                              ? SizedBox(
+                                height: 22,
+                                width: 22,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: GameColors.onNeonButton,
+                                ),
+                              )
+                              : const Text(
+                                'LOG IN',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 0.6,
+                                ),
                               ),
-                            )
-                          : const Text(
-                              'LOG IN',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 0.6,
-                              ),
-                            ),
                     ),
-                    const SizedBox(height: 20),
-                    Text(
-                      'Use the email and password from Sign up.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: GameColors.muted.withValues(alpha: 0.85),
-                        fontSize: 12,
-                      ),
-                    ),
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 28),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -194,7 +226,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           ),
                         ),
                         TextButton(
-                          onPressed: _loading ? null : () => context.push('/signup'),
+                          onPressed:
+                              _loading ? null : () => context.push('/signup'),
                           child: Text(
                             'Sign up',
                             style: TextStyle(

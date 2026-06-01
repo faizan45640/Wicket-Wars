@@ -3,41 +3,14 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../data/daily_reward.dart';
 import '../data/models/user_profile.dart';
 import '../data/providers.dart';
 import '../data/streak_player_reward.dart';
+import '../services/local_notification_service.dart';
 import '../theme/game_colors.dart';
 
-const List<int> kCoinRewardByDay = [50, 75, 100, 150, 200, 300, 500];
-
 final NumberFormat _coinFmt = NumberFormat.decimalPattern('en_US');
-
-int _rewardForStreak(int streakDays) {
-  if (streakDays <= 0) return kCoinRewardByDay[0];
-  final idx = (streakDays - 1).clamp(0, kCoinRewardByDay.length - 1);
-  return kCoinRewardByDay[idx];
-}
-
-int _nextStreakAfterClaim(UserProfile p) {
-  final last = p.lastDailyRewardClaimAt;
-  final t = DateTime.now();
-  final today = DateTime(t.year, t.month, t.day);
-  if (last == null) return 1;
-  final lastDay = DateTime(last.year, last.month, last.day);
-  if (lastDay == today) return p.dailyStreak;
-  final yesterday = today.subtract(const Duration(days: 1));
-  if (lastDay == yesterday) return p.dailyStreak + 1;
-  return 1;
-}
-
-bool _canClaim(UserProfile p) {
-  final last = p.lastDailyRewardClaimAt;
-  if (last == null) return true;
-  final t = DateTime.now();
-  final today = DateTime(t.year, t.month, t.day);
-  final lastDay = DateTime(last.year, last.month, last.day);
-  return today.isAfter(lastDay);
-}
 
 Future<void> showDailyRewardDialog(BuildContext context, WidgetRef ref) {
   return showDialog<void>(
@@ -50,12 +23,13 @@ Future<void> showDailyRewardDialog(BuildContext context, WidgetRef ref) {
           final profileAsync = ref2.watch(userProfileProvider);
           return profileAsync.when(
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => Dialog(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text('Error: $e'),
-              ),
-            ),
+            error:
+                (e, _) => Dialog(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text('Error: $e'),
+                  ),
+                ),
             data: (p) {
               if (p == null) {
                 return const Dialog(
@@ -65,13 +39,19 @@ Future<void> showDailyRewardDialog(BuildContext context, WidgetRef ref) {
                   ),
                 );
               }
-              final canClaim = _canClaim(p);
-              final displayStreak = canClaim ? _nextStreakAfterClaim(p) : p.dailyStreak;
-              final todayReward = _rewardForStreak(canClaim ? displayStreak : p.dailyStreak);
+              final canClaim = canClaimDailyReward(p);
+              final displayStreak =
+                  canClaim ? nextStreakAfterClaim(p) : p.dailyStreak;
+              final todayReward = rewardForStreak(
+                canClaim ? displayStreak : p.dailyStreak,
+              );
               return Dialog(
                 backgroundColor: Colors.transparent,
                 elevation: 0,
-                insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+                insetPadding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 24,
+                ),
                 child: ConstrainedBox(
                   constraints: BoxConstraints(
                     maxWidth: 400,
@@ -107,8 +87,11 @@ Future<void> showDailyRewardDialog(BuildContext context, WidgetRef ref) {
                                 ...List.generate(7, (i) {
                                   final day = i + 1;
                                   final coins = kCoinRewardByDay[i];
-                                  final done = day < displayStreak || (!canClaim && day <= p.dailyStreak);
-                                  final isToday = day == displayStreak && canClaim;
+                                  final done =
+                                      day < displayStreak ||
+                                      (!canClaim && day <= p.dailyStreak);
+                                  final isToday =
+                                      day == displayStreak && canClaim;
                                   return _dayRow(
                                     day: day,
                                     coins: coins,
@@ -123,7 +106,9 @@ Future<void> showDailyRewardDialog(BuildContext context, WidgetRef ref) {
                                       : 'Already claimed today. Come back tomorrow.',
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
-                                    color: GameColors.neon.withValues(alpha: 0.9),
+                                    color: GameColors.neon.withValues(
+                                      alpha: 0.9,
+                                    ),
                                     fontSize: 13,
                                     fontWeight: FontWeight.w700,
                                   ),
@@ -153,9 +138,7 @@ Widget _dialogHeader(BuildContext ctx) {
     padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
     decoration: BoxDecoration(
       color: const Color(0xFF1A1A1A),
-      border: Border(
-        bottom: BorderSide(color: GameColors.cardBorder),
-      ),
+      border: Border(bottom: BorderSide(color: GameColors.cardBorder)),
     ),
     child: Row(
       children: [
@@ -174,7 +157,11 @@ Widget _dialogHeader(BuildContext ctx) {
         ),
         IconButton(
           onPressed: () => Navigator.of(ctx).pop(),
-          icon: const Icon(Icons.close_rounded, color: Colors.white70, size: 24),
+          icon: const Icon(
+            Icons.close_rounded,
+            color: Colors.white70,
+            size: 24,
+          ),
         ),
       ],
     ),
@@ -251,9 +238,10 @@ Widget _dayRow({
   return Padding(
     padding: const EdgeInsets.only(bottom: 6),
     child: Material(
-      color: highlight
-          ? GameColors.neon.withValues(alpha: 0.12)
-          : const Color(0xFF1E1E1E),
+      color:
+          highlight
+              ? GameColors.neon.withValues(alpha: 0.12)
+              : const Color(0xFF1E1E1E),
       borderRadius: BorderRadius.circular(10),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -324,76 +312,97 @@ Widget _claimBar(
       border: Border(top: BorderSide(color: GameColors.cardBorder)),
     ),
     child: FilledButton(
-      onPressed: canClaim
-          ? () async {
-              final nextStreak = _nextStreakAfterClaim(profile);
-              final reward = _rewardForStreak(nextStreak);
-              var updated = profile.copyWith(
-                coins: profile.coins + reward,
-                lastDailyRewardClaimAt: DateTime.now(),
-                dailyStreak: nextStreak,
-              );
-              await ref.read(userRepositoryProvider).upsertProfile(updated);
-
-              final streakBonus = await applyStreakPlayerBonus(
-                nextStreakAfterClaim: nextStreak,
-                uid: profile.uid,
-                loadSquad: ref.read(squadRepositoryProvider).getSquad,
-                savePlayer: ref.read(squadRepositoryProvider).upsertPlayer,
-                loadCatalog: () =>
-                    ref.read(playersCatalogRepositoryProvider).watchCatalog().first,
-              );
-              if (streakBonus.extraCoins > 0) {
-                updated = updated.copyWith(coins: updated.coins + streakBonus.extraCoins);
-                await ref.read(userRepositoryProvider).upsertProfile(updated);
-              }
-
-              if (!dialogContext.mounted) return;
-              Navigator.of(dialogContext).pop();
-              SchedulerBinding.instance.addPostFrameCallback((_) {
-                if (!scaffoldContext.mounted) return;
-                final messenger = ScaffoldMessenger.of(scaffoldContext);
-                messenger.clearSnackBars();
-
-                var msg =
-                    'Claimed ${_coinFmt.format(reward)} coins. Streak: $nextStreak days.';
-                if (streakBonus.summaryLine.isNotEmpty) {
-                  msg += ' ${streakBonus.summaryLine}';
-                }
-                if (streakBonus.extraCoins > 0) {
-                  msg +=
-                      ' +${_coinFmt.format(streakBonus.extraCoins)} coins (squad full).';
-                }
-
-                messenger.showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      msg,
-                      style: const TextStyle(
-                        color: Color(0xFFFAFAFA),
-                        fontWeight: FontWeight.w600,
+      onPressed:
+          canClaim
+              ? () async {
+                final claim = await ref
+                    .read(userRepositoryProvider)
+                    .claimDailyReward(profile.uid);
+                if (!claim.claimed) {
+                  if (!dialogContext.mounted) return;
+                  Navigator.of(dialogContext).pop();
+                  SchedulerBinding.instance.addPostFrameCallback((_) {
+                    if (!scaffoldContext.mounted) return;
+                    ScaffoldMessenger.of(scaffoldContext).showSnackBar(
+                      const SnackBar(
+                        content: Text('Daily reward already claimed today.'),
                       ),
-                    ),
-                    backgroundColor: const Color(0xFF383838),
-                    behavior: SnackBarBehavior.floating,
-                    margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                    duration: const Duration(seconds: 5),
-                    showCloseIcon: true,
-                    closeIconColor: GameColors.neon,
-                  ),
+                    );
+                  });
+                  return;
+                }
+
+                final nextStreak = claim.streakDay;
+                final reward = claim.rewardCoins;
+                var updated = claim.profile;
+                await LocalNotificationService.instance.showDailyRewardClaimed(
+                  coins: reward,
+                  streak: nextStreak,
                 );
-              });
-            }
-          : null,
+
+                final streakBonus = await applyStreakPlayerBonus(
+                  nextStreakAfterClaim: nextStreak,
+                  uid: profile.uid,
+                  loadSquad: ref.read(squadRepositoryProvider).getSquad,
+                  savePlayer: ref.read(squadRepositoryProvider).upsertPlayer,
+                  loadCatalog:
+                      () =>
+                          ref
+                              .read(playersCatalogRepositoryProvider)
+                              .watchCatalog()
+                              .first,
+                );
+                if (streakBonus.extraCoins > 0) {
+                  updated = updated.copyWith(
+                    coins: updated.coins + streakBonus.extraCoins,
+                  );
+                  await ref.read(userRepositoryProvider).upsertProfile(updated);
+                }
+
+                if (!dialogContext.mounted) return;
+                Navigator.of(dialogContext).pop();
+                SchedulerBinding.instance.addPostFrameCallback((_) {
+                  if (!scaffoldContext.mounted) return;
+                  final messenger = ScaffoldMessenger.of(scaffoldContext);
+                  messenger.clearSnackBars();
+
+                  var msg =
+                      'Claimed ${_coinFmt.format(reward)} coins. Streak: $nextStreak days.';
+                  if (streakBonus.summaryLine.isNotEmpty) {
+                    msg += ' ${streakBonus.summaryLine}';
+                  }
+                  if (streakBonus.extraCoins > 0) {
+                    msg +=
+                        ' +${_coinFmt.format(streakBonus.extraCoins)} coins (squad full).';
+                  }
+
+                  messenger.showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        msg,
+                        style: const TextStyle(
+                          color: Color(0xFFFAFAFA),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      backgroundColor: const Color(0xFF383838),
+                      behavior: SnackBarBehavior.floating,
+                      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      duration: const Duration(seconds: 5),
+                      showCloseIcon: true,
+                      closeIconColor: GameColors.neon,
+                    ),
+                  );
+                });
+              }
+              : null,
       style: FilledButton.styleFrom(
         backgroundColor: GameColors.neon,
         foregroundColor: GameColors.onNeonButton,
         disabledBackgroundColor: GameColors.muted.withValues(alpha: 0.3),
         disabledForegroundColor: GameColors.muted,
         padding: const EdgeInsets.symmetric(vertical: 14),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
       child: Text(
         canClaim ? 'CLAIM REWARD' : 'ALREADY CLAIMED TODAY',

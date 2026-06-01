@@ -13,6 +13,7 @@ import 'screens/online_match_screen.dart';
 import 'screens/player_detail_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/signup_screen.dart';
+import 'screens/starter_pack_screen.dart';
 import 'screens/squad_screen.dart';
 
 /// Central routing. Unauthenticated users are sent to [LoginScreen] via [redirect].
@@ -48,6 +49,12 @@ final GoRouter appRouter = GoRouter(
       path: '/',
       builder: (BuildContext context, GoRouterState state) {
         return const HomeScreen();
+      },
+    ),
+    GoRoute(
+      path: '/starter-pack',
+      builder: (BuildContext context, GoRouterState state) {
+        return const StarterPackScreen();
       },
     ),
     GoRoute(

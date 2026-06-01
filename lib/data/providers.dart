@@ -44,7 +44,8 @@ final _placeholderSquadRepository = PlaceholderSquadRepository();
 final _placeholderMatchRepository = PlaceholderMatchRepository();
 final _placeholderLeaderboardRepository = PlaceholderLeaderboardRepository();
 final _placeholderMatchHistoryRepository = PlaceholderMatchHistoryRepository();
-final _placeholderPlayersCatalogRepository = PlaceholderPlayersCatalogRepository();
+final _placeholderPlayersCatalogRepository =
+    PlaceholderPlayersCatalogRepository();
 
 AuthRepository activeAuthRepository() {
   return AppEnvironment.useFirebase
@@ -91,7 +92,9 @@ final matchHistoryRepositoryProvider = Provider<MatchHistoryRepository>((ref) {
       : _placeholderMatchHistoryRepository;
 });
 
-final playersCatalogRepositoryProvider = Provider<PlayersCatalogRepository>((ref) {
+final playersCatalogRepositoryProvider = Provider<PlayersCatalogRepository>((
+  ref,
+) {
   return AppEnvironment.useFirebase
       ? _firebasePlayersCatalogRepository
       : _placeholderPlayersCatalogRepository;
@@ -102,7 +105,9 @@ final authStateProvider = StreamProvider<AppUser?>((ref) {
 });
 
 final currentUidProvider = Provider<String?>((ref) {
-  return ref.watch(authStateProvider).valueOrNull?.uid;
+  final userFromStream = ref.watch(authStateProvider).valueOrNull;
+  return userFromStream?.uid ??
+      ref.watch(authRepositoryProvider).currentUser?.uid;
 });
 
 final userProfileProvider = StreamProvider<UserProfile?>((ref) {

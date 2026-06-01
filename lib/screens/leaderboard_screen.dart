@@ -9,6 +9,7 @@ import '../data/models/user_profile.dart';
 import '../data/providers.dart';
 import '../theme/game_colors.dart';
 import '../widgets/game_bottom_nav.dart';
+import '../widgets/monetization_banner.dart';
 
 class _LbRow {
   const _LbRow({
@@ -33,7 +34,9 @@ class LeaderboardScreen extends ConsumerStatefulWidget {
 }
 
 class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
-  static final NumberFormat _pointsFormat = NumberFormat.decimalPattern('en_US');
+  static final NumberFormat _pointsFormat = NumberFormat.decimalPattern(
+    'en_US',
+  );
 
   /// 1st / 2nd / 3rd — gold, silver, bronze (visible on dark UI).
   static const List<Color> _podium = [
@@ -112,11 +115,7 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
 
     return List.generate(tuples.length, (i) {
       final t = tuples[i];
-      return _LbRow(
-        rankLabel: _ordinal(i + 1),
-        name: t.name,
-        points: t.points,
-      );
+      return _LbRow(rankLabel: _ordinal(i + 1), name: t.name, points: t.points);
     });
   }
 
@@ -128,7 +127,9 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
     final uid = ref.watch(currentUidProvider);
     final profileAsync = ref.watch(userProfileProvider);
     final historyAsync =
-        uid != null ? ref.watch(matchHistoryProvider(uid)) : const AsyncValue<List<MatchSummary>>.data([]);
+        uid != null
+            ? ref.watch(matchHistoryProvider(uid))
+            : const AsyncValue<List<MatchSummary>>.data([]);
 
     return Scaffold(
       backgroundColor: GameColors.bg,
@@ -137,7 +138,11 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
         elevation: 0,
         scrolledUnderElevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: GameColors.neon, size: 20),
+          icon: const Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: GameColors.neon,
+            size: 20,
+          ),
           onPressed: () => context.go('/'),
         ),
         centerTitle: true,
@@ -159,149 +164,183 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
             child: _buildTabs(),
           ),
           Expanded(
-            child: _tab == 0
-                ? globalAsync.when(
-                    data: (entries) {
-                      if (entries.isEmpty) {
-                        return Center(
-                          child: Padding(
-                            padding: const EdgeInsets.all(24),
-                            child: Text(
-                              'No leaderboard rows yet.\n'
-                              'Saving your profile (or signing in) syncs a row when the app writes `leaderboard/{uid}`.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: GameColors.muted.withValues(alpha: 0.95),
-                                height: 1.45,
+            child:
+                _tab == 0
+                    ? globalAsync.when(
+                      data: (entries) {
+                        if (entries.isEmpty) {
+                          return Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(24),
+                              child: Text(
+                                'No leaderboard rows yet.\n'
+                                'Saving your profile (or signing in) syncs a row when the app writes `leaderboard/{uid}`.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: GameColors.muted.withValues(
+                                    alpha: 0.95,
+                                  ),
+                                  height: 1.45,
+                                ),
                               ),
                             ),
-                          ),
+                          );
+                        }
+                        final list =
+                            entries
+                                .map(
+                                  (e) => _LbRow(
+                                    rankLabel: _ordinal(e.rank ?? 1),
+                                    name: e.displayName,
+                                    points: e.rankingPoints,
+                                  ),
+                                )
+                                .toList();
+                        return ListView.separated(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          itemCount: list.length,
+                          separatorBuilder:
+                              (_, __) => Divider(
+                                height: 1,
+                                thickness: 1,
+                                color: GameColors.cardBorder.withValues(
+                                  alpha: 0.6,
+                                ),
+                                indent: 12,
+                                endIndent: 12,
+                              ),
+                          itemBuilder: (context, index) {
+                            return _buildRow(list[index], index);
+                          },
                         );
-                      }
-                      final list = entries
-                          .map(
-                            (e) => _LbRow(
-                              rankLabel: _ordinal(e.rank ?? 1),
-                              name: e.displayName,
-                              points: e.rankingPoints,
-                            ),
-                          )
-                          .toList();
-                      return ListView.separated(
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        itemCount: list.length,
-                        separatorBuilder: (_, __) => Divider(
-                          height: 1,
-                          thickness: 1,
-                          color: GameColors.cardBorder.withValues(alpha: 0.6),
-                          indent: 12,
-                          endIndent: 12,
-                        ),
-                        itemBuilder: (context, index) {
-                          return _buildRow(list[index], index);
-                        },
-                      );
-                    },
-                    loading: () => const Center(
-                      child: CircularProgressIndicator(color: GameColors.neon),
-                    ),
-                    error: (e, _) => Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Text(
-                          'Could not load leaderboard: $e',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.red.shade200),
-                        ),
-                      ),
-                    ),
-                  )
-                : historyAsync.when(
-                    data: (history) {
-                      return globalAsync.when(
-                        data: (global) {
-                          final profile = profileAsync.valueOrNull;
-                          if (history.isEmpty) {
-                            return Center(
-                              child: Padding(
-                                padding: const EdgeInsets.all(24),
-                                child: Text(
-                                  'No rivals yet.\n'
-                                  'Finish online matches to see opponents here; points use the global leaderboard when display names match.',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    color: GameColors.muted.withValues(alpha: 0.95),
-                                    height: 1.45,
-                                  ),
-                                ),
-                              ),
-                            );
-                          }
-                          final list = _rivalRows(
-                            uid: uid,
-                            profile: profile,
-                            history: history,
-                            global: global,
-                          );
-                          if (list.isEmpty) {
-                            return Center(
-                              child: Padding(
-                                padding: const EdgeInsets.all(24),
-                                child: Text(
-                                  'Could not build rival list.\nTry signing in or playing a match.',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    color: GameColors.muted.withValues(alpha: 0.95),
-                                    height: 1.45,
-                                  ),
-                                ),
-                              ),
-                            );
-                          }
-                          return ListView.separated(
-                            padding: const EdgeInsets.symmetric(horizontal: 8),
-                            itemCount: list.length,
-                            separatorBuilder: (_, __) => Divider(
-                              height: 1,
-                              thickness: 1,
-                              color: GameColors.cardBorder.withValues(alpha: 0.6),
-                              indent: 12,
-                              endIndent: 12,
-                            ),
-                            itemBuilder: (context, index) {
-                              return _buildRow(list[index], index);
-                            },
-                          );
-                        },
-                        loading: () => const Center(
-                          child: CircularProgressIndicator(color: GameColors.neon),
-                        ),
-                        error: (e, _) => Center(
-                          child: Padding(
-                            padding: const EdgeInsets.all(24),
-                            child: Text(
-                              'Could not load leaderboard for rivals: $e',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(color: Colors.red.shade200),
+                      },
+                      loading:
+                          () => const Center(
+                            child: CircularProgressIndicator(
+                              color: GameColors.neon,
                             ),
                           ),
-                        ),
-                      );
-                    },
-                    loading: () => const Center(
-                      child: CircularProgressIndicator(color: GameColors.neon),
+                      error:
+                          (e, _) => Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(24),
+                              child: Text(
+                                'Could not load leaderboard: $e',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: Colors.red.shade200),
+                              ),
+                            ),
+                          ),
+                    )
+                    : historyAsync.when(
+                      data: (history) {
+                        return globalAsync.when(
+                          data: (global) {
+                            final profile = profileAsync.valueOrNull;
+                            if (history.isEmpty) {
+                              return Center(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(24),
+                                  child: Text(
+                                    'No rivals yet.\n'
+                                    'Finish online matches to see opponents here; points use the global leaderboard when display names match.',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      color: GameColors.muted.withValues(
+                                        alpha: 0.95,
+                                      ),
+                                      height: 1.45,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }
+                            final list = _rivalRows(
+                              uid: uid,
+                              profile: profile,
+                              history: history,
+                              global: global,
+                            );
+                            if (list.isEmpty) {
+                              return Center(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(24),
+                                  child: Text(
+                                    'Could not build rival list.\nTry signing in or playing a match.',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      color: GameColors.muted.withValues(
+                                        alpha: 0.95,
+                                      ),
+                                      height: 1.45,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }
+                            return ListView.separated(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                              ),
+                              itemCount: list.length,
+                              separatorBuilder:
+                                  (_, __) => Divider(
+                                    height: 1,
+                                    thickness: 1,
+                                    color: GameColors.cardBorder.withValues(
+                                      alpha: 0.6,
+                                    ),
+                                    indent: 12,
+                                    endIndent: 12,
+                                  ),
+                              itemBuilder: (context, index) {
+                                return _buildRow(list[index], index);
+                              },
+                            );
+                          },
+                          loading:
+                              () => const Center(
+                                child: CircularProgressIndicator(
+                                  color: GameColors.neon,
+                                ),
+                              ),
+                          error:
+                              (e, _) => Center(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(24),
+                                  child: Text(
+                                    'Could not load leaderboard for rivals: $e',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      color: Colors.red.shade200,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                        );
+                      },
+                      loading:
+                          () => const Center(
+                            child: CircularProgressIndicator(
+                              color: GameColors.neon,
+                            ),
+                          ),
+                      error:
+                          (e, _) => Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(24),
+                              child: Text(
+                                'Could not load match history: $e',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: Colors.red.shade200),
+                              ),
+                            ),
+                          ),
                     ),
-                    error: (e, _) => Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Text(
-                          'Could not load match history: $e',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.red.shade200),
-                        ),
-                      ),
-                    ),
-                  ),
+          ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 8, 20, 12),
+            child: Center(child: MonetizationBanner()),
           ),
         ],
       ),
@@ -325,13 +364,19 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
     return TextButton(
       onPressed: () => setState(() => _tab = index),
       style: TextButton.styleFrom(
-        backgroundColor: selected ? GameColors.card : GameColors.card.withValues(alpha: 0.35),
+        backgroundColor:
+            selected
+                ? GameColors.card
+                : GameColors.card.withValues(alpha: 0.35),
         foregroundColor: selected ? GameColors.neon : GameColors.muted,
         padding: const EdgeInsets.symmetric(vertical: 12),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
           side: BorderSide(
-            color: selected ? GameColors.neon.withValues(alpha: 0.5) : GameColors.cardBorder,
+            color:
+                selected
+                    ? GameColors.neon.withValues(alpha: 0.5)
+                    : GameColors.cardBorder,
             width: selected ? 1.5 : 1,
           ),
         ),
@@ -360,7 +405,9 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
             Icons.military_tech_rounded,
             size: 22,
             color: tier,
-            shadows: [BoxShadow(color: tier!.withValues(alpha: 0.45), blurRadius: 10)],
+            shadows: [
+              BoxShadow(color: tier!.withValues(alpha: 0.45), blurRadius: 10),
+            ],
           ),
         SizedBox(
           width: isPodium ? 32 : 40,
@@ -391,7 +438,11 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
     final trailing = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(Icons.star_rounded, size: 14, color: isPodium ? tier : GameColors.neon),
+        Icon(
+          Icons.star_rounded,
+          size: 14,
+          color: isPodium ? tier : GameColors.neon,
+        ),
         const SizedBox(width: 4),
         Text(
           _pointsFormat.format(e.points),
@@ -430,10 +481,17 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
           gradient: LinearGradient(
             begin: Alignment.centerLeft,
             end: Alignment.centerRight,
-            colors: [tier.withValues(alpha: 0.18), tier.withValues(alpha: 0.04)],
+            colors: [
+              tier.withValues(alpha: 0.18),
+              tier.withValues(alpha: 0.04),
+            ],
           ),
           boxShadow: [
-            BoxShadow(color: tier.withValues(alpha: 0.12), blurRadius: 12, offset: const Offset(0, 4)),
+            BoxShadow(
+              color: tier.withValues(alpha: 0.12),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
           ],
         ),
         child: tile,

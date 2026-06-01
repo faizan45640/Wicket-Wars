@@ -113,6 +113,8 @@ Future<void> showDailyRewardDialog(BuildContext context, WidgetRef ref) {
                                     fontWeight: FontWeight.w700,
                                   ),
                                 ),
+                                const SizedBox(height: 12),
+                                _playerBonusHint(displayStreak, canClaim),
                                 const SizedBox(height: 16),
                               ],
                             ),
@@ -129,6 +131,43 @@ Future<void> showDailyRewardDialog(BuildContext context, WidgetRef ref) {
         },
       );
     },
+  );
+}
+
+Widget _playerBonusHint(int displayStreak, bool canClaim) {
+  final nextBonusDay =
+      ((displayStreak ~/ kStreakPlayerBonusInterval) + 1) *
+      kStreakPlayerBonusInterval;
+  final claimHitsBonus =
+      canClaim && qualifiesForStreakPlayerBonus(displayStreak);
+  final label =
+      claimHitsBonus
+          ? 'Today also gives a bonus trainable player.'
+          : 'Next player bonus: day $nextBonusDay.';
+  return Container(
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: Colors.cyanAccent.withValues(alpha: 0.08),
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: Colors.cyanAccent.withValues(alpha: 0.45)),
+    ),
+    child: Row(
+      children: [
+        const Icon(Icons.person_add_alt_1, color: Colors.cyanAccent, size: 22),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            '$label Squad cap for daily recruits: $kDailyRewardMaxSquadPlayers; after that, bonus becomes ${_coinFmt.format(kStreakBonusCoinsWhenSquadFull)} coins.',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              height: 1.35,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ],
+    ),
   );
 }
 

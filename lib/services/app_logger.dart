@@ -5,6 +5,11 @@ import 'package:flutter/foundation.dart';
 class AppLogger {
   const AppLogger._();
 
+  static void debug(String message, {Object? error, StackTrace? stackTrace}) {
+    if (!kDebugMode) return;
+    _write('DEBUG', message, error: error, stackTrace: stackTrace);
+  }
+
   static void info(String message, {Object? error, StackTrace? stackTrace}) {
     _write('INFO', message, error: error, stackTrace: stackTrace);
   }
@@ -15,6 +20,14 @@ class AppLogger {
 
   static void error(String message, {Object? error, StackTrace? stackTrace}) {
     _write('ERROR', message, error: error, stackTrace: stackTrace);
+  }
+
+  static void event(String name, [Map<String, Object?> data = const {}]) {
+    final suffix =
+        data.isEmpty
+            ? ''
+            : ' ${data.entries.map((e) => '${e.key}=${e.value}').join(' ')}';
+    info('event:$name$suffix');
   }
 
   static void _write(

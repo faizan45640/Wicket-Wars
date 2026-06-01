@@ -29,9 +29,43 @@ void main() {
     expect(saved!.canTrainAndUpgrade, true);
   });
 
-  test('squad full yields coins not player', () async {
-    final big = List<CricketPlayer>.generate(
-      15,
+  test(
+    'starter-pack-sized squad can still earn daily reward players',
+    () async {
+      final big = List<CricketPlayer>.generate(
+        15,
+        (i) => CricketPlayer(
+          id: 'p$i',
+          displayName: 'P$i',
+          isRealPlayer: false,
+          playerTier: PlayerTier.free,
+          attributes: const PlayerAttributes(
+            batting: 50,
+            bowling: 50,
+            fielding: 50,
+            stamina: 50,
+            consistency: 50,
+          ),
+        ),
+      );
+      CricketPlayer? saved;
+      final out = await applyStreakPlayerBonus(
+        nextStreakAfterClaim: 4,
+        uid: 'u1',
+        loadSquad: (_) async => big,
+        savePlayer: (_, p) async {
+          saved = p;
+        },
+        loadCatalog: () async => [],
+      );
+      expect(out.extraCoins, 0);
+      expect(saved, isNotNull);
+    },
+  );
+
+  test('daily reward squad cap yields coins not player', () async {
+    final full = List<CricketPlayer>.generate(
+      kDailyRewardMaxSquadPlayers,
       (i) => CricketPlayer(
         id: 'p$i',
         displayName: 'P$i',
@@ -50,7 +84,7 @@ void main() {
     final out = await applyStreakPlayerBonus(
       nextStreakAfterClaim: 4,
       uid: 'u1',
-      loadSquad: (_) async => big,
+      loadSquad: (_) async => full,
       savePlayer: (_, __) async {
         saved = true;
       },

@@ -7,6 +7,9 @@ import 'models/player_tier.dart';
 /// Every N consecutive daily-claim days, user earns a trainee for their squad (or coins if squad is full).
 const int kStreakPlayerBonusInterval = 4;
 
+/// Starter packs grant 15 players; daily streaks can grow the long-term squad beyond that.
+const int kDailyRewardMaxSquadPlayers = 30;
+
 const int kStreakBonusCoinsWhenSquadFull = 175;
 
 bool qualifiesForStreakPlayerBonus(int nextStreakAfterClaim) {
@@ -69,7 +72,7 @@ Future<StreakPlayerBonusOutcome> applyStreakPlayerBonus({
   required Future<List<CricketPlayer>> Function(String uid) loadSquad,
   required Future<void> Function(String uid, CricketPlayer player) savePlayer,
   required Future<List<CatalogPlayer>> Function() loadCatalog,
-  int maxSquadPlayers = 15,
+  int maxSquadPlayers = kDailyRewardMaxSquadPlayers,
 }) async {
   if (!qualifiesForStreakPlayerBonus(nextStreakAfterClaim)) {
     return const StreakPlayerBonusOutcome(summaryLine: '');

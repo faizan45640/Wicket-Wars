@@ -9,7 +9,6 @@ import '../data/models/user_profile.dart';
 import '../data/providers.dart';
 import '../theme/game_colors.dart';
 import '../widgets/game_bottom_nav.dart';
-import '../widgets/monetization_banner.dart';
 
 class _LbRow {
   const _LbRow({
@@ -338,13 +337,8 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
                           ),
                     ),
           ),
-          const Padding(
-            padding: EdgeInsets.fromLTRB(20, 8, 20, 12),
-            child: Center(child: MonetizationBanner()),
-          ),
         ],
       ),
-      // Wireframe: Squad highlighted on this screen.
       bottomNavigationBar: const GameBottomNav(selectedIndex: 1),
     );
   }

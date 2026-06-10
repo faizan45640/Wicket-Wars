@@ -7,9 +7,8 @@ import '../data/daily_reward.dart';
 import '../data/models/user_profile.dart';
 import '../data/providers.dart';
 import '../theme/game_colors.dart';
+import '../widgets/ad_bottom_bar.dart';
 import '../widgets/daily_reward_dialog.dart';
-import '../widgets/game_bottom_nav.dart';
-import '../widgets/monetization_banner.dart';
 import '../widgets/training_player_picker.dart';
 
 /// Dark cricket dashboard — matches Wicket Wars home mockup.
@@ -26,7 +25,7 @@ class HomeScreen extends ConsumerWidget {
       data:
           (s) =>
               s.isEmpty
-                  ? '0 players · open squad to sync from Firestore'
+                  ? '0 players · open a pack to build your squad'
                   : '${s.length} player(s)',
       loading: () => 'Loading squad…',
       orElse: () => '…',
@@ -122,12 +121,10 @@ class HomeScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 12),
             _buildDailyRewardCard(context, ref),
-            const SizedBox(height: 16),
-            const Center(child: MonetizationBanner()),
           ],
         ),
       ),
-      bottomNavigationBar: const GameBottomNav(selectedIndex: 0),
+      bottomNavigationBar: const BannerWithNav(selectedIndex: 0),
     );
   }
 

@@ -1,3 +1,5 @@
+import '../training_rules.dart';
+
 /// `users/{uid}` — cloud-synced profile (coins, ranking, meta).
 class UserProfile {
   const UserProfile({
@@ -15,6 +17,8 @@ class UserProfile {
     this.dailyStreak = 0,
     this.totalRunsScored = 0,
     this.starterPackOpened = false,
+    this.trainingEnergy = kMaxTrainingEnergy,
+    this.trainingEnergyUpdatedAt,
   });
 
   final String uid;
@@ -38,6 +42,10 @@ class UserProfile {
   /// New accounts reveal a 15-player starter pack before normal play.
   final bool starterPackOpened;
 
+  /// Stored training energy and the time it was last updated (for regen).
+  final int trainingEnergy;
+  final DateTime? trainingEnergyUpdatedAt;
+
   Map<String, dynamic> toMap() => {
     'uid': uid,
     'displayName': displayName,
@@ -53,6 +61,9 @@ class UserProfile {
     'dailyStreak': dailyStreak,
     'totalRunsScored': totalRunsScored,
     'starterPackOpened': starterPackOpened,
+    'trainingEnergy': trainingEnergy,
+    'trainingEnergyUpdatedAt':
+        trainingEnergyUpdatedAt?.toUtc().toIso8601String(),
   };
 
   factory UserProfile.fromMap(Map<String, dynamic> map) {
@@ -79,6 +90,14 @@ class UserProfile {
       dailyStreak: (map['dailyStreak'] as num?)?.round() ?? 0,
       totalRunsScored: (map['totalRunsScored'] as num?)?.round() ?? 0,
       starterPackOpened: map['starterPackOpened'] as bool? ?? false,
+      trainingEnergy:
+          (map['trainingEnergy'] as num?)?.round() ?? kMaxTrainingEnergy,
+      trainingEnergyUpdatedAt:
+          map['trainingEnergyUpdatedAt'] != null
+              ? DateTime.parse(
+                map['trainingEnergyUpdatedAt'] as String,
+              ).toLocal()
+              : null,
     );
   }
 
@@ -97,6 +116,8 @@ class UserProfile {
     int? dailyStreak,
     int? totalRunsScored,
     bool? starterPackOpened,
+    int? trainingEnergy,
+    DateTime? trainingEnergyUpdatedAt,
   }) {
     return UserProfile(
       uid: uid ?? this.uid,
@@ -114,6 +135,9 @@ class UserProfile {
       dailyStreak: dailyStreak ?? this.dailyStreak,
       totalRunsScored: totalRunsScored ?? this.totalRunsScored,
       starterPackOpened: starterPackOpened ?? this.starterPackOpened,
+      trainingEnergy: trainingEnergy ?? this.trainingEnergy,
+      trainingEnergyUpdatedAt:
+          trainingEnergyUpdatedAt ?? this.trainingEnergyUpdatedAt,
     );
   }
 }

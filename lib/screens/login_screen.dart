@@ -10,6 +10,8 @@ import '../data/onboarding_seed.dart';
 import '../data/providers.dart';
 import '../theme/game_colors.dart';
 import '../widgets/auth_error_banner.dart';
+import '../widgets/auth_logo.dart';
+import '../widgets/game_loading_overlay.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -58,6 +60,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         squadRepository: ref.read(squadRepositoryProvider),
         uid: user.uid,
         email: user.email ?? _email.text,
+        displayName: user.displayName,
       );
       if (!mounted) return;
       context.go('/');
@@ -102,6 +105,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        _buildForm(context),
+        Positioned.fill(
+          child: GameLoadingOverlay(visible: _loading, title: 'LOGGING IN'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildForm(BuildContext context) {
     return Scaffold(
       backgroundColor: GameColors.bg,
       body: SafeArea(
@@ -115,18 +129,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const SizedBox(height: 24),
-                    Text(
-                      'WICKET WARS',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: GameColors.neon,
-                        fontSize: 28,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1.2,
-                      ),
-                    ),
-                    const SizedBox(height: 40),
+                    const SizedBox(height: 8),
+                    const AuthLogo(height: 150),
+                    const SizedBox(height: 30),
                     TextFormField(
                       key: const Key('login_email'),
                       controller: _email,

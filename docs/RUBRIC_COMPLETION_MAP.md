@@ -21,8 +21,9 @@
 - Routing: `lib/app_router.dart`.
 
 ## External REST API Integration Other Than Firebase
-- Google AI REST call via `fetch` in Cloud Functions: `functions/index.js`.
-- Used for match commentary/player generation attempts with local fallback.
+- Hugging Face Inference Providers REST call via `fetch` in Cloud Functions: `functions/index.js`.
+- Google AI is kept as a second provider, then deterministic fallback keeps gameplay stable.
+- Used for match commentary/player generation attempts with source reporting.
 
 ## Profiling
 - Timeline profiling helper: `lib/services/app_profiler.dart`.
@@ -38,6 +39,10 @@
 
 ## Background Tasks, Services, and Threading
 - Periodic Workmanager task registration: `lib/services/background_training_service.dart`.
+- Runs on a separate isolate; records proof-of-run and delivers the training
+  energy-full notification as a backstop using `lib/services/training_reminder_store.dart`
+  (SharedPreferences bridge between UI and background isolate).
+- UI persists the energy-full time on training: `lib/screens/player_detail_screen.dart`.
 - Initialized during app startup: `lib/main.dart`.
 
 ## Permissions
@@ -46,8 +51,8 @@
 
 ## Advertisement / Monetization Integration
 - Google Mobile Ads initialization: `lib/services/ads_service.dart`.
-- Test banner widget: `lib/widgets/monetization_banner.dart`.
-- Home screen ad placement: `lib/screens/home_screen.dart`.
+- Test banner widget: `lib/widgets/monetization_banner.dart`; rewarded helper: `lib/services/rewarded_ad_helper.dart`.
+- Ad placement is Home-screen only (cleaner UX): `lib/screens/home_screen.dart`.
 - Android AdMob test app id: `android/app/src/main/AndroidManifest.xml`.
 
 ## Flutter Installation

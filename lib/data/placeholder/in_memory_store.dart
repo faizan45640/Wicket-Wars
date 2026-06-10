@@ -133,6 +133,7 @@ final class InMemoryStore {
   MatchRoom newRoom({
     required String hostUid,
     PitchCondition pitch = PitchCondition.balanced,
+    int overs = 20,
   }) {
     final code = generateRoomCode().toUpperCase();
     final room = MatchRoom(
@@ -140,6 +141,7 @@ final class InMemoryStore {
       roomCode: code,
       status: MatchRoomStatus.waitingGuest,
       pitch: pitch,
+      oversPerInnings: overs,
       hostUid: hostUid,
     );
     roomsById[code] = room;

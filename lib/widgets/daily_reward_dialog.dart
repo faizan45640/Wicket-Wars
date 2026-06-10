@@ -253,7 +253,7 @@ Widget _streakSummary(int streak, bool canClaim) {
               ),
               const SizedBox(height: 2),
               Text(
-                'Stored in your Firestore profile.',
+                'Saved to your profile.',
                 style: TextStyle(
                   color: GameColors.muted.withValues(alpha: 0.95),
                   fontSize: 11,
@@ -378,6 +378,15 @@ Widget _claimBar(
                   coins: reward,
                   streak: nextStreak,
                 );
+                // Remind the player when the next reward unlocks (next local day).
+                final now = DateTime.now();
+                final nextUnlock = DateTime(
+                  now.year,
+                  now.month,
+                  now.day,
+                ).add(const Duration(days: 1));
+                await LocalNotificationService.instance
+                    .scheduleDailyRewardUnlock(unlockAt: nextUnlock);
 
                 final streakBonus = await applyStreakPlayerBonus(
                   nextStreakAfterClaim: nextStreak,

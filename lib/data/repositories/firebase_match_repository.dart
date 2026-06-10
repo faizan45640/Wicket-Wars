@@ -35,17 +35,32 @@ class FirebaseMatchRepository implements MatchRepository {
   }
 
   @override
-  Future<MatchRoom> createRoom({required String hostUid}) async {
-    final result = await _functions.httpsCallable('createMatchRoom').call();
+  Future<MatchRoom> createRoom({
+    required String hostUid,
+    int overs = 20,
+    PitchCondition pitch = PitchCondition.balanced,
+  }) async {
+    final result = await _functions.httpsCallable('createMatchRoom').call({
+      'overs': overs,
+      'pitch': pitch.name,
+    });
     final data = Map<String, dynamic>.from(result.data as Map);
     final roomId = data['roomId'] as String;
     return MatchRoom(
       roomId: roomId,
       roomCode: data['roomCode'] as String? ?? roomId,
       status: MatchRoomStatus.waitingGuest,
-      pitch: PitchCondition.balanced,
+      pitch: _pitchFromName(data['pitch'] as String?, pitch),
+      oversPerInnings: (data['oversPerInnings'] as num?)?.round() ?? overs,
       hostUid: hostUid,
     );
+  }
+
+  PitchCondition _pitchFromName(String? name, PitchCondition fallback) {
+    for (final v in PitchCondition.values) {
+      if (v.name == name) return v;
+    }
+    return fallback;
   }
 
   @override
@@ -75,8 +90,31 @@ class FirebaseMatchRepository implements MatchRepository {
   }
 
   @override
-  Future<void> advanceDelivery({required String roomId}) async {
-    await _functions.httpsCallable('advanceDelivery').call({'roomId': roomId});
+  Future<void> advanceDelivery({
+    required String roomId,
+    String? shot,
+    String? bowl,
+  }) async {
+    await _functions.httpsCallable('advanceDelivery').call({
+      'roomId': roomId,
+      if (shot != null) 'shot': shot,
+      if (bowl != null) 'bowl': bowl,
+    });
+  }
+
+  @override
+  Future<void> submitChoice({
+    required String roomId,
+    String? shot,
+    String? bowl,
+    bool force = false,
+  }) async {
+    await _functions.httpsCallable('submitMatchChoice').call({
+      'roomId': roomId,
+      if (shot != null) 'shot': shot,
+      if (bowl != null) 'bowl': bowl,
+      if (force) 'force': true,
+    });
   }
 
   @override

@@ -19,7 +19,7 @@ Future<void> showTrainingPlayerPicker(BuildContext parentContext, WidgetRef ref)
   if (players.isEmpty) {
     ScaffoldMessenger.of(parentContext).showSnackBar(
       const SnackBar(
-        content: Text('No players in Firestore yet. Add documents under users/{uid}/players.'),
+        content: Text('Your squad is empty. Open a pack to add players first.'),
       ),
     );
     return;

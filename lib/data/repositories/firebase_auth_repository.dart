@@ -9,7 +9,8 @@ class FirebaseAuthRepository implements AuthRepository {
 
   final fb.FirebaseAuth _auth;
 
-  AppUser _mapUser(fb.User u) => AppUser(uid: u.uid, email: u.email);
+  AppUser _mapUser(fb.User u) =>
+      AppUser(uid: u.uid, email: u.email, displayName: u.displayName);
 
   @override
   AppUser? get currentUser {

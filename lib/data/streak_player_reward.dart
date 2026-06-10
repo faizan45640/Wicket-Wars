@@ -28,11 +28,10 @@ CricketPlayer _defaultStreakRecruit({
     isRealPlayer: false,
     playerTier: PlayerTier.free,
     role: PlayerRole.allRounder,
-    country: 'Generated',
+    country: 'Academy',
     battingStyle: 'Right-hand bat',
     bowlingStyle: 'Right-arm medium',
-    generatedBio:
-        'A daily streak recruit generated for consistent Wicket Wars play.',
+    generatedBio: 'A daily streak recruit earned through consistent play.',
     attributes: const PlayerAttributes(
       batting: 48,
       bowling: 46,

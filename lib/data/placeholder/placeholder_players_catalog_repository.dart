@@ -31,10 +31,10 @@ class PlaceholderPlayersCatalogRepository implements PlayersCatalogRepository {
       isRealPlayer: false,
       playerTier: PlayerTier.free,
       role: PlayerRole.batter,
-      country: 'Generated',
+      country: 'Academy',
       battingStyle: 'Right-hand bat',
       bowlingStyle: 'Part-time spin',
-      generatedBio: 'A trainable starter template for generated squads.',
+      generatedBio: 'A trainable academy starter for new squads.',
       attributes: const PlayerAttributes(
         batting: 52,
         bowling: 48,

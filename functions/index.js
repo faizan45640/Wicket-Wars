@@ -9,15 +9,29 @@ admin.initializeApp();
 const db = admin.firestore();
 const REGION = "us-central1";
 const GOOGLE_AI_API_KEY = defineSecret("GOOGLE_AI_API_KEY");
+const HUGGING_FACE_TOKEN = defineSecret("HUGGING_FACE_TOKEN");
 const GOOGLE_AI_MODELS = (process.env.GOOGLE_AI_MODELS || "gemini-2.0-flash-lite,gemma-4-26b-a4b-it,gemma-4-31b-it")
   .split(",")
   .map((model) => model.trim())
   .filter(Boolean);
+const HUGGING_FACE_MODELS = (process.env.HUGGING_FACE_MODELS || "meta-llama/Llama-3.1-8B-Instruct,Qwen/Qwen2.5-7B-Instruct")
+  .split(",")
+  .map((model) => model.trim())
+  .filter(Boolean);
+const HUGGING_FACE_CHAT_URL = "https://router.huggingface.co/v1/chat/completions";
 const ROOM_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const MAX_BALLS = 120;
 const MAX_WICKETS = 10;
+const ALLOWED_OVERS = [1, 5, 10, 20];
+const DEFAULT_OVERS = 20;
+const ALLOWED_PITCHES = ["balanced", "flat", "grassy"];
+const BALL_TYPES = ["pace", "bouncer", "yorker", "spin"];
+const SHOT_TYPES = ["block", "drive", "loft", "pull"];
+const RECENT_BALLS_LIMIT = 12;
+// Time both sides have to lock a choice before CPU auto-fills the missing pick.
+const CHOICE_WINDOW_MS = 20000;
 const TAIL_LIMIT = 30;
-const LLM_TIMEOUT_MS = 1400;
+const LLM_TIMEOUT_MS = 3500;
 const STARTER_PACK_LLM_TIMEOUT_MS = 25000;
 const PLAYER_ROLES = new Set(["batter", "bowler", "allRounder", "wicketKeeper"]);
 const PREMIUM_CATALOG = [
@@ -75,6 +89,10 @@ const PREMIUM_CATALOG = [
 
 exports.createMatchRoom = onCall({ region: REGION }, async (request) => {
   const uid = requireUid(request);
+  const requestedOvers = Math.round(num(request.data && request.data.overs));
+  const overs = ALLOWED_OVERS.includes(requestedOvers) ? requestedOvers : DEFAULT_OVERS;
+  const requestedPitch = String((request.data && request.data.pitch) || "").trim();
+  const pitch = ALLOWED_PITCHES.includes(requestedPitch) ? requestedPitch : "balanced";
   for (let i = 0; i < 12; i++) {
     const code = generateRoomCode();
     const ref = roomRef(code);
@@ -85,7 +103,8 @@ exports.createMatchRoom = onCall({ region: REGION }, async (request) => {
         roomId: code,
         roomCode: code,
         status: "waitingGuest",
-        pitch: "balanced",
+        pitch,
+        oversPerInnings: overs,
         hostUid: uid,
         guestUid: null,
         hostPlayingXi: [],
@@ -110,7 +129,7 @@ exports.createMatchRoom = onCall({ region: REGION }, async (request) => {
       tx.set(ref, room);
       return room;
     });
-    if (created) return { roomId: code, roomCode: code };
+    if (created) return { roomId: code, roomCode: code, oversPerInnings: overs, pitch };
   }
   throw new HttpsError("resource-exhausted", "Could not allocate a room code.");
 });
@@ -165,7 +184,7 @@ exports.lockStrongestXi = onCall({ region: REGION }, async (request) => {
     const next = { ...room, ...patch };
     patch.status = next.hostXiLocked && next.guestXiLocked ? "inProgress" : "selectingXi";
     if (patch.status === "inProgress" && !room.hostBatFirst) {
-      Object.assign(patch, startMatchPatch());
+      Object.assign(patch, startMatchPatch(room));
     }
     tx.set(ref, patch, { merge: true });
   });
@@ -174,16 +193,28 @@ exports.lockStrongestXi = onCall({ region: REGION }, async (request) => {
 
 exports.advanceDelivery = onCall({
   region: REGION,
-  secrets: [GOOGLE_AI_API_KEY],
+  secrets: [GOOGLE_AI_API_KEY, HUGGING_FACE_TOKEN],
 }, async (request) => {
   const uid = requireUid(request);
   const roomId = normalizeRoomCode(request.data && request.data.roomId);
+  const reqShot = request.data && request.data.shot;
+  const reqBowl = request.data && request.data.bowl;
   const roomSnap = await roomRef(roomId).get();
   if (!roomSnap.exists) throw new HttpsError("not-found", "Room not found.");
   const room = roomSnap.data();
   if (!isParticipant(room, uid)) {
     throw new HttpsError("permission-denied", "Only room players can advance the match.");
   }
+  // Only honor a choice from the side that actually controls that role.
+  const youHost = room.hostUid === uid;
+  const battingHostNow = room.hostBatFirst == null
+    ? true
+    : (room.inningsNumber === 1 ? !!room.hostBatFirst : !room.hostBatFirst);
+  const youBatting = youHost === battingHostNow;
+  const choices = {
+    shot: youBatting && SHOT_TYPES.includes(reqShot) ? reqShot : null,
+    bowl: !youBatting && BALL_TYPES.includes(reqBowl) ? reqBowl : null,
+  };
   const [hostPlayers, guestPlayers] = await Promise.all([
     getSelectedPlayers(room.hostUid, room.hostPlayingXi || []),
     getSelectedPlayers(room.guestUid, room.guestPlayingXi || []),
@@ -201,13 +232,16 @@ exports.advanceDelivery = onCall({
     if (!current.hostXiLocked || !current.guestXiLocked) {
       throw new HttpsError("failed-precondition", "Both players must lock XIs first.");
     }
-    let next = current.hostBatFirst ? current : { ...current, ...startMatchPatch() };
+    let next = current.hostBatFirst ? current : { ...current, ...startMatchPatch(current) };
     if (isFinishedScoreState(next)) {
       tx.set(ref, completePatch(next), { merge: true });
       return null;
     }
-    const applied = applyOneDelivery(next, hostPlayers, guestPlayers);
+    const applied = applyOneDelivery(next, hostPlayers, guestPlayers, choices);
     next = applied.room;
+    next.pendingShot = null;
+    next.pendingBowl = null;
+    next.choiceDeadlineMs = Date.now() + CHOICE_WINDOW_MS;
     tx.set(ref, isFinishedScoreState(next) ? completePatch(next) : next, { merge: true });
     return {
       roomId,
@@ -223,9 +257,97 @@ exports.advanceDelivery = onCall({
   return { ok: true };
 });
 
+// Two-sided delivery handshake: the batter locks a shot and the bowler locks a
+// delivery. The ball only resolves once both picks are in, OR once the 5s window
+// (choiceDeadlineMs) lapses and a client asks to force it (CPU fills the gap).
+exports.submitMatchChoice = onCall({
+  region: REGION,
+  secrets: [GOOGLE_AI_API_KEY, HUGGING_FACE_TOKEN],
+}, async (request) => {
+  const uid = requireUid(request);
+  const roomId = normalizeRoomCode(request.data && request.data.roomId);
+  const reqShot = request.data && request.data.shot;
+  const reqBowl = request.data && request.data.bowl;
+  const force = !!(request.data && request.data.force);
+  const roomSnap = await roomRef(roomId).get();
+  if (!roomSnap.exists) throw new HttpsError("not-found", "Room not found.");
+  if (!isParticipant(roomSnap.data(), uid)) {
+    throw new HttpsError("permission-denied", "Only room players can play the match.");
+  }
+  const [hostPlayers, guestPlayers] = await Promise.all([
+    getSelectedPlayers(roomSnap.data().hostUid, roomSnap.data().hostPlayingXi || []),
+    getSelectedPlayers(roomSnap.data().guestUid, roomSnap.data().guestPlayingXi || []),
+  ]);
+
+  const delivery = await db.runTransaction(async (tx) => {
+    const ref = roomRef(roomId);
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new HttpsError("not-found", "Room not found.");
+    let current = snap.data();
+    if (!isParticipant(current, uid)) {
+      throw new HttpsError("permission-denied", "Only room players can play the match.");
+    }
+    if (current.status === "completed") return null;
+    if (!current.hostXiLocked || !current.guestXiLocked) {
+      throw new HttpsError("failed-precondition", "Both players must lock XIs first.");
+    }
+    if (current.hostBatFirst == null) {
+      current = { ...current, ...startMatchPatch(current) };
+    }
+
+    const youHost = current.hostUid === uid;
+    const battingHostNow = current.inningsNumber === 1
+      ? !!current.hostBatFirst
+      : !current.hostBatFirst;
+    const youBatting = youHost === battingHostNow;
+
+    // Record this caller's pick for their role only.
+    let pendingShot = SHOT_TYPES.includes(current.pendingShot) ? current.pendingShot : null;
+    let pendingBowl = BALL_TYPES.includes(current.pendingBowl) ? current.pendingBowl : null;
+    if (youBatting && SHOT_TYPES.includes(reqShot)) pendingShot = reqShot;
+    if (!youBatting && BALL_TYPES.includes(reqBowl)) pendingBowl = reqBowl;
+
+    const deadline = num(current.choiceDeadlineMs) || (Date.now() + CHOICE_WINDOW_MS);
+    const bothChosen = !!pendingShot && !!pendingBowl;
+    const timedOut = force && Date.now() >= deadline;
+
+    if (!bothChosen && !timedOut) {
+      // Still waiting on the other side: just stash the pick + keep the window.
+      tx.set(ref, { pendingShot, pendingBowl, choiceDeadlineMs: deadline }, { merge: true });
+      return null;
+    }
+
+    // Ready to resolve. CPU fills whichever side didn't pick in time.
+    if (isFinishedScoreState(current)) {
+      tx.set(ref, completePatch(current), { merge: true });
+      return null;
+    }
+    const applied = applyOneDelivery(current, hostPlayers, guestPlayers, {
+      shot: pendingShot,
+      bowl: pendingBowl,
+    });
+    const next = applied.room;
+    next.pendingShot = null;
+    next.pendingBowl = null;
+    next.choiceDeadlineMs = Date.now() + CHOICE_WINDOW_MS;
+    tx.set(ref, isFinishedScoreState(next) ? completePatch(next) : next, { merge: true });
+    return {
+      roomId,
+      room: next,
+      fallbackLine: applied.fallbackLine,
+      context: applied.context,
+      deliveryNumber: next.deliveryNumber,
+    };
+  });
+  if (delivery && delivery.fallbackLine && delivery.context) {
+    await tryPolishDeliveryCommentary(delivery).catch(() => {});
+  }
+  return { ok: true, resolved: !!delivery };
+});
+
 exports.generatePlayer = onCall({
   region: REGION,
-  secrets: [GOOGLE_AI_API_KEY],
+  secrets: [GOOGLE_AI_API_KEY, HUGGING_FACE_TOKEN],
 }, async (request) => {
   const uid = requireUid(request);
   const prompt = String((request.data && request.data.prompt) || "").trim();
@@ -241,7 +363,7 @@ exports.generatePlayer = onCall({
 
 exports.openStarterPack = onCall({
   region: REGION,
-  secrets: [GOOGLE_AI_API_KEY],
+  secrets: [GOOGLE_AI_API_KEY, HUGGING_FACE_TOKEN],
 }, async (request) => {
   const uid = requireUid(request);
   const forceReopen = request.data && request.data.force === true;
@@ -258,14 +380,14 @@ exports.openStarterPack = onCall({
   }
 
   const premium = premiumCatalogCard();
-  let generationSource = "gemma";
+  let generationSource = "ai";
   let generated;
   try {
     const generatedPack = await generateStarterPackBasics();
     generationSource = generatedPack.generationSource;
     generated = generatedPack.players;
   } catch (error) {
-    console.warn("Starter pack Gemma generation failed; using fallback.", {
+    console.warn("Starter pack AI generation failed; using fallback.", {
       message: error && error.message ? error.message : String(error),
     });
     generationSource = "fallback";
@@ -425,8 +547,9 @@ function isParticipant(room, uid) {
   return room && (room.hostUid === uid || room.guestUid === uid);
 }
 
-function startMatchPatch() {
+function startMatchPatch(room) {
   const hostBatFirst = Math.random() < 0.5;
+  const overs = Math.round(num(room && room.oversPerInnings)) || DEFAULT_OVERS;
   return {
     status: "inProgress",
     hostBatFirst,
@@ -439,8 +562,12 @@ function startMatchPatch() {
     hostLegalBalls: 0,
     guestLegalBalls: 0,
     deliveryNumber: 0,
+    recentBalls: [],
+    pendingShot: null,
+    pendingBowl: null,
+    choiceDeadlineMs: Date.now() + CHOICE_WINDOW_MS,
     commentaryTail: [
-      `Toss - ${hostBatFirst ? "Host" : "Guest"} bats first. T20: 20 overs per innings.`,
+      `Toss - ${hostBatFirst ? "Host" : "Guest"} bats first. ${overs} ${overs === 1 ? "over" : "overs"} per innings.`,
     ],
   };
 }
@@ -507,15 +634,21 @@ function normalizePlayer(player) {
   };
 }
 
-function applyOneDelivery(room, hostPlayers, guestPlayers) {
+function roomMaxBalls(room) {
+  const overs = Math.round(num(room && room.oversPerInnings));
+  return overs > 0 ? overs * 6 : MAX_BALLS;
+}
+
+function applyOneDelivery(room, hostPlayers, guestPlayers, choices) {
   if (room.status === "completed" || room.hostBatFirst == null) {
     return { room, fallbackLine: null, context: null };
   }
+  const maxBalls = roomMaxBalls(room);
   const battingHost = battingIsHost(room);
   const br = battingHost ? num(room.hostRuns) : num(room.guestRuns);
   const bw = battingHost ? num(room.hostWickets) : num(room.guestWickets);
   const bb = battingHost ? num(room.hostLegalBalls) : num(room.guestLegalBalls);
-  if (bw >= MAX_WICKETS || bb >= MAX_BALLS) {
+  if (bw >= MAX_WICKETS || bb >= maxBalls) {
     return { room, fallbackLine: null, context: null };
   }
   if (room.inningsNumber === 2 && room.chaseTarget && br >= room.chaseTarget) {
@@ -526,13 +659,29 @@ function applyOneDelivery(room, hostPlayers, guestPlayers) {
   const bowlingLineup = battingHost ? guestPlayers : hostPlayers;
   const batter = selectBatter(battingLineup, bw, bb);
   const bowler = selectBowler(bowlingLineup, bb);
+
+  const isChaseInn = room.inningsNumber === 2;
+  const ballsLeftNow = clamp(maxBalls - bb, 1, maxBalls);
+  const rrrNow = isChaseInn && room.chaseTarget
+    ? ((room.chaseTarget - br) / ballsLeftNow) * 6
+    : 0;
+  const bowlType = BALL_TYPES.includes(choices && choices.bowl)
+    ? choices.bowl
+    : pickCpuBowl({ legalBalls: bb, maxBalls });
+  const shotType = SHOT_TYPES.includes(choices && choices.shot)
+    ? choices.shot
+    : pickCpuShot({ wicketsDown: bw, isChase: isChaseInn, rrr: rrrNow });
+
   const result = simulateBall({
     pitch: room.pitch || "balanced",
+    maxBalls,
     legalBallsInInnings: bb,
     wicketsDown: bw,
     runsScoredThisInnings: br,
     isChaseInnings: room.inningsNumber === 2,
     chaseTarget: room.chaseTarget,
+    bowlType,
+    shotType,
     battingRating: batter ? batter.attributes.batting : averageRating(battingLineup, "batting"),
     bowlingRating: bowler ? bowler.attributes.bowling : averageRating(bowlingLineup, "bowling"),
     fieldingRating: averageRating(bowlingLineup, "fielding"),
@@ -555,15 +704,19 @@ function applyOneDelivery(room, hostPlayers, guestPlayers) {
   const who = battingHost ? "Host" : "Guest";
   const batterName = batter ? batter.displayName : who;
   const bowlerName = bowler ? ` vs ${bowler.displayName}` : "";
-  const line = `${over} · ${batterName}${bowlerName}: ${result.runs > 0 ? result.runs : "dot"}${result.wicket > 0 ? " · OUT!" : ""}`;
+  const line = `${over} · ${batterName} (${shotType})${bowlerName} (${bowlType}): ${result.runs > 0 ? result.runs : "dot"}${result.wicket > 0 ? " · OUT!" : ""}`;
   next.commentaryTail = trimTail([...(room.commentaryTail || []), line]);
+
+  const code = result.wicket > 0 ? "W" : String(result.runs);
+  next.recentBalls = [...(room.recentBalls || []), code].slice(-RECENT_BALLS_LIMIT);
 
   const newBr = battingHost ? next.hostRuns : next.guestRuns;
   const newBw = battingHost ? next.hostWickets : next.guestWickets;
   const newBb = battingHost ? next.hostLegalBalls : next.guestLegalBalls;
-  if (next.inningsNumber === 1 && (newBw >= MAX_WICKETS || newBb >= MAX_BALLS)) {
+  if (next.inningsNumber === 1 && (newBw >= MAX_WICKETS || newBb >= maxBalls)) {
     next.chaseTarget = newBr + 1;
     next.inningsNumber = 2;
+    next.recentBalls = [];
     next.commentaryTail = trimTail([
       ...next.commentaryTail,
       `-- End of 1st innings (${newBr}/${newBw}). Target: ${next.chaseTarget} --`,
@@ -579,18 +732,21 @@ function applyOneDelivery(room, hostPlayers, guestPlayers) {
       batter: playerForPrompt(batter, who),
       bowler: playerForPrompt(bowler, "Bowler"),
       result,
+      shotType,
+      bowlType,
       pitch: room.pitch || "balanced",
       inningsNumber: next.inningsNumber,
       chaseTarget: next.chaseTarget || null,
       hostScore: `${num(next.hostRuns)}/${num(next.hostWickets)}`,
       guestScore: `${num(next.guestRuns)}/${num(next.guestWickets)}`,
       hostBatFirst: !!next.hostBatFirst,
-      ballsRemaining: MAX_BALLS - (battingHost ? num(next.hostLegalBalls) : num(next.guestLegalBalls)),
+      ballsRemaining: maxBalls - (battingHost ? num(next.hostLegalBalls) : num(next.guestLegalBalls)),
     },
   };
 }
 
 function simulateBall(ctx) {
+  const maxBalls = ctx.maxBalls > 0 ? ctx.maxBalls : MAX_BALLS;
   let pDot = 0.36;
   let p1 = 0.28;
   let p2 = 0.12;
@@ -613,7 +769,7 @@ function simulateBall(ctx) {
   } else if (ctx.pitch === "grassy") {
     pDot *= 1.08; pW *= 1.22; p4 *= 0.9; p6 *= 0.85;
   }
-  if (ctx.legalBallsInInnings >= 90) {
+  if (ctx.legalBallsInInnings >= maxBalls * 0.75) {
     pDot *= 0.92; p4 *= 1.08; p6 *= 1.1; pW *= 1.06;
   }
   if (ctx.wicketsDown >= 7) {
@@ -621,14 +777,17 @@ function simulateBall(ctx) {
   }
   if (ctx.isChaseInnings && ctx.chaseTarget) {
     const need = ctx.chaseTarget - ctx.runsScoredThisInnings;
-    const ballsLeft = clamp(MAX_BALLS - ctx.legalBallsInInnings, 1, MAX_BALLS);
+    const ballsLeft = clamp(maxBalls - ctx.legalBallsInInnings, 1, maxBalls);
     const rrr = need <= 0 ? 0 : (need / ballsLeft) * 6;
     if (rrr >= 11) {
       pDot *= 0.9; p4 *= 1.1; p6 *= 1.18; pW *= 1.08;
-    } else if (rrr <= 5 && ctx.legalBallsInInnings > 60) {
+    } else if (rrr <= 5 && ctx.legalBallsInInnings > maxBalls * 0.5) {
       pDot *= 1.05; p6 *= 0.92; pW *= 0.96;
     }
   }
+  const m = matchupFactors(ctx.bowlType, ctx.shotType);
+  pDot *= m.dot; p1 *= m.p1; p2 *= m.p2; p3 *= m.p3;
+  p4 *= m.p4; p6 *= m.p6; pW *= m.pW;
   const probs = [pDot, p1, p2, p3, p4, p6, pW];
   const sum = probs.reduce((a, b) => a + b, 0);
   const u = Math.random();
@@ -648,6 +807,107 @@ function simulateBall(ctx) {
   return { runs: 0, wicket: 0 };
 }
 
+// Multiplicative outcome modifiers from the bowl-type vs shot-type matchup.
+// Returns factors applied on top of rating/pitch/phase weighting.
+function matchupFactors(bowl, shot) {
+  const f = { dot: 1, p1: 1, p2: 1, p3: 1, p4: 1, p6: 1, pW: 1 };
+  switch (shot) {
+    case "block":
+      f.dot *= 1.6; f.p1 *= 0.8; f.p2 *= 0.5; f.p3 *= 0.3;
+      f.p4 *= 0.25; f.p6 *= 0.1; f.pW *= 0.45; break;
+    case "drive":
+      f.dot *= 0.95; f.p1 *= 1.1; f.p2 *= 1.1; f.p4 *= 1.35; f.p6 *= 0.8; break;
+    case "loft":
+      f.dot *= 0.9; f.p1 *= 0.6; f.p4 *= 1.5; f.p6 *= 2.4; f.pW *= 1.9; break;
+    case "pull":
+      f.dot *= 0.92; f.p2 *= 1.2; f.p4 *= 1.45; f.p6 *= 1.6; f.pW *= 1.5; break;
+    default: break;
+  }
+  switch (bowl) {
+    case "pace":
+      break;
+    case "bouncer":
+      f.p6 *= 1.15; f.pW *= 1.1; break;
+    case "yorker":
+      f.dot *= 1.4; f.p1 *= 0.9; f.p4 *= 0.5; f.p6 *= 0.4; f.pW *= 1.2; break;
+    case "spin":
+      f.p1 *= 1.1; f.p6 *= 0.9; f.pW *= 1.05; break;
+    default: break;
+  }
+  // Rock-paper-scissors style interactions.
+  if (bowl === "yorker" && (shot === "loft" || shot === "pull")) {
+    f.pW *= 1.8; f.p4 *= 0.5; f.p6 *= 0.4;
+  }
+  if (bowl === "yorker" && shot === "block") {
+    f.pW *= 0.7; f.dot *= 1.1;
+  }
+  if (bowl === "bouncer" && shot === "pull") {
+    f.p4 *= 1.4; f.p6 *= 1.5; f.pW *= 0.7;
+  }
+  if (bowl === "bouncer" && (shot === "drive" || shot === "block")) {
+    f.dot *= 1.2; f.pW *= 1.25;
+  }
+  if (bowl === "spin" && shot === "loft") {
+    f.pW *= 1.5;
+  }
+  if (bowl === "spin" && shot === "pull") {
+    f.pW *= 1.2;
+  }
+  if (bowl === "pace" && shot === "drive") {
+    f.p4 *= 1.2;
+  }
+  return f;
+}
+
+function weightedPick(options) {
+  const total = options.reduce((a, o) => a + o.w, 0);
+  let u = Math.random() * total;
+  for (const o of options) {
+    u -= o.w;
+    if (u <= 0) return o.v;
+  }
+  return options[options.length - 1].v;
+}
+
+// CPU delivery choice (used when the bowling side is not human-controlled).
+function pickCpuBowl(ctx) {
+  const death = ctx.legalBalls >= ctx.maxBalls * 0.75;
+  return weightedPick([
+    { v: "pace", w: death ? 2 : 3 },
+    { v: "bouncer", w: death ? 3 : 2 },
+    { v: "yorker", w: death ? 4 : 2 },
+    { v: "spin", w: 3 },
+  ]);
+}
+
+// CPU shot choice (used when the batting side is not human-controlled).
+function pickCpuShot(ctx) {
+  const desperate = ctx.isChase && ctx.rrr >= 10;
+  const collapsing = ctx.wicketsDown >= 7;
+  if (desperate) {
+    return weightedPick([
+      { v: "loft", w: 4 },
+      { v: "pull", w: 3 },
+      { v: "drive", w: 2 },
+      { v: "block", w: 1 },
+    ]);
+  }
+  if (collapsing) {
+    return weightedPick([
+      { v: "block", w: 4 },
+      { v: "drive", w: 3 },
+      { v: "pull", w: 1 },
+      { v: "loft", w: 1 },
+    ]);
+  }
+  return weightedPick([
+    { v: "drive", w: 4 },
+    { v: "pull", w: 2 },
+    { v: "block", w: 2 },
+    { v: "loft", w: 2 },
+  ]);
+}
+
 function isFinishedScoreState(room) {
   if (room.inningsNumber !== 2) return false;
   const battingHost = battingIsHost(room);
@@ -655,7 +915,7 @@ function isFinishedScoreState(room) {
   if (room.chaseTarget && score >= room.chaseTarget) return true;
   const wickets = battingHost ? num(room.hostWickets) : num(room.guestWickets);
   const balls = battingHost ? num(room.hostLegalBalls) : num(room.guestLegalBalls);
-  return wickets >= MAX_WICKETS || balls >= MAX_BALLS;
+  return wickets >= MAX_WICKETS || balls >= roomMaxBalls(room);
 }
 
 function completePatch(room) {
@@ -719,7 +979,11 @@ function averageRating(players, key) {
 
 async function tryPolishDeliveryCommentary(delivery) {
   const polished = await generateDeliveryCommentary(delivery.context);
-  if (!polished || polished === delivery.fallbackLine) return;
+  if (!polished) return;
+  // Keep the over/ball prefix so the scoreboard reference never disappears.
+  const over = delivery.context && delivery.context.over ? delivery.context.over : "";
+  const withOver = over && !polished.startsWith(over) ? `${over} · ${polished}` : polished;
+  if (withOver === delivery.fallbackLine) return;
   await db.runTransaction(async (tx) => {
     const ref = roomRef(delivery.roomId);
     const snap = await tx.get(ref);
@@ -729,7 +993,7 @@ async function tryPolishDeliveryCommentary(delivery) {
     const tail = [...(room.commentaryTail || [])];
     const index = tail.lastIndexOf(delivery.fallbackLine);
     if (index < 0) return;
-    tail[index] = polished;
+    tail[index] = withOver;
     tx.set(ref, { commentaryTail: trimTail(tail) }, { merge: true });
   });
 }
@@ -746,9 +1010,11 @@ async function generateDeliveryCommentary(context) {
     context.chaseTarget ? `Target: ${context.chaseTarget}` : "First innings",
     `Batter: ${context.batter.name}, ${context.batter.role}, ${context.batter.battingStyle}`,
     `Bowler: ${context.bowler.name}, ${context.bowler.role}, ${context.bowler.bowlingStyle}`,
+    context.bowlType ? `Delivery: ${context.bowlType}` : "",
+    context.shotType ? `Shot played: ${context.shotType}` : "",
     `Ball result: ${context.result.wicket ? "wicket" : `${context.result.runs} run(s)`}`,
-  ].join("\n");
-  const text = await callGemmaText({
+  ].filter(Boolean).join("\n");
+  const text = await callAiText({
     system: "You are a concise cricket commentator for Wicket Wars.",
     prompt,
     maxTokens: 60,
@@ -766,7 +1032,7 @@ async function generateSquadPlayerWithLlm(prompt) {
     "Rules: fictional names only, attributes 35-88, bio under 130 chars.",
     prompt ? `User theme: ${prompt}` : "User theme: balanced starter prospect",
   ].join("\n");
-  const text = await callGemmaText({
+  const text = await callAiText({
     system: "You return strict JSON for a cricket game backend.",
     prompt: content,
     maxTokens: 260,
@@ -786,7 +1052,7 @@ async function generateStarterPackBasics() {
     "Rules: fictional names only, no real players, at least 4 batters, 4 bowlers, 2 allRounders, 1 wicketKeeper.",
     "Attributes should be 38-76. Bios under 110 chars.",
   ].join("\n");
-  const text = await callGemmaText({
+  const text = await callAiText({
     system: "You return strict JSON for a cricket card game backend.",
     prompt,
     maxTokens: 1800,
@@ -825,20 +1091,20 @@ function premiumCatalogCard() {
 
 function fallbackStarterPackBasics() {
   return [
-    { displayName: "Aarav Striker", role: "batter", country: "Generated", battingStyle: "Right-hand bat", bowlingStyle: "Part-time off spin", attributes: { batting: 72, bowling: 42, fielding: 61, stamina: 64, consistency: 66 }, generatedBio: "Aggressive starter batter with clean boundary timing." },
-    { displayName: "Bilal Swing", role: "bowler", country: "Generated", battingStyle: "Right-hand bat", bowlingStyle: "Right-arm fast medium", attributes: { batting: 44, bowling: 73, fielding: 59, stamina: 68, consistency: 64 }, generatedBio: "New-ball mover built for early wickets." },
-    { displayName: "Zain Finisher", role: "batter", country: "Generated", battingStyle: "Left-hand bat", bowlingStyle: "Does not bowl", attributes: { batting: 70, bowling: 38, fielding: 62, stamina: 67, consistency: 61 }, generatedBio: "Late-over hitter with sharp finishing instincts." },
-    { displayName: "Hamza Cutter", role: "bowler", country: "Generated", battingStyle: "Right-hand bat", bowlingStyle: "Left-arm medium", attributes: { batting: 45, bowling: 70, fielding: 63, stamina: 66, consistency: 65 }, generatedBio: "Clever cutter bowler who varies pace well." },
-    { displayName: "Rayyan Keeper", role: "wicketKeeper", country: "Generated", battingStyle: "Right-hand bat", bowlingStyle: "Wicket keeper", attributes: { batting: 66, bowling: 38, fielding: 74, stamina: 66, consistency: 64 }, generatedBio: "Reliable keeper-batter with quick hands." },
-    { displayName: "Arjun Anchor", role: "batter", country: "Generated", battingStyle: "Right-hand bat", bowlingStyle: "Leg spin", attributes: { batting: 69, bowling: 48, fielding: 62, stamina: 70, consistency: 70 }, generatedBio: "Steady anchor who keeps innings together." },
-    { displayName: "Kabir Spin", role: "bowler", country: "Generated", battingStyle: "Left-hand bat", bowlingStyle: "Right-arm leg spin", attributes: { batting: 42, bowling: 72, fielding: 60, stamina: 65, consistency: 66 }, generatedBio: "Attacking spinner with a useful wrong one." },
-    { displayName: "Usman Pace", role: "bowler", country: "Generated", battingStyle: "Right-hand bat", bowlingStyle: "Right-arm fast", attributes: { batting: 40, bowling: 74, fielding: 58, stamina: 70, consistency: 62 }, generatedBio: "Raw pace option with hard lengths." },
-    { displayName: "Ibrahim Cover", role: "allRounder", country: "Generated", battingStyle: "Right-hand bat", bowlingStyle: "Right-arm medium", attributes: { batting: 64, bowling: 62, fielding: 68, stamina: 66, consistency: 63 }, generatedBio: "Balanced all-rounder with safe fielding." },
-    { displayName: "Rohan Sweep", role: "batter", country: "Generated", battingStyle: "Left-hand bat", bowlingStyle: "Slow left arm", attributes: { batting: 68, bowling: 45, fielding: 61, stamina: 63, consistency: 62 }, generatedBio: "Spin-hitter who loves the sweep shot." },
-    { displayName: "Daniyal Yorker", role: "bowler", country: "Generated", battingStyle: "Right-hand bat", bowlingStyle: "Right-arm death pace", attributes: { batting: 41, bowling: 73, fielding: 60, stamina: 68, consistency: 64 }, generatedBio: "Death-over bowler with a toe-crushing yorker." },
-    { displayName: "Nihal Glide", role: "allRounder", country: "Generated", battingStyle: "Left-hand bat", bowlingStyle: "Off spin", attributes: { batting: 62, bowling: 61, fielding: 66, stamina: 65, consistency: 65 }, generatedBio: "Utility all-rounder who fills lineup gaps." },
-    { displayName: "Taimur Point", role: "batter", country: "Generated", battingStyle: "Right-hand bat", bowlingStyle: "Part-time medium", attributes: { batting: 65, bowling: 46, fielding: 70, stamina: 62, consistency: 60 }, generatedBio: "Compact batter and lively point fielder." },
-    { displayName: "Sahil Drift", role: "bowler", country: "Generated", battingStyle: "Right-hand bat", bowlingStyle: "Left-arm orthodox", attributes: { batting: 43, bowling: 69, fielding: 63, stamina: 64, consistency: 68 }, generatedBio: "Accurate spinner with subtle drift." },
+    { displayName: "Aarav Striker", role: "batter", country: "Academy", battingStyle: "Right-hand bat", bowlingStyle: "Part-time off spin", attributes: { batting: 72, bowling: 42, fielding: 61, stamina: 64, consistency: 66 }, generatedBio: "Aggressive starter batter with clean boundary timing." },
+    { displayName: "Bilal Swing", role: "bowler", country: "Academy", battingStyle: "Right-hand bat", bowlingStyle: "Right-arm fast medium", attributes: { batting: 44, bowling: 73, fielding: 59, stamina: 68, consistency: 64 }, generatedBio: "New-ball mover built for early wickets." },
+    { displayName: "Zain Finisher", role: "batter", country: "Academy", battingStyle: "Left-hand bat", bowlingStyle: "Does not bowl", attributes: { batting: 70, bowling: 38, fielding: 62, stamina: 67, consistency: 61 }, generatedBio: "Late-over hitter with sharp finishing instincts." },
+    { displayName: "Hamza Cutter", role: "bowler", country: "Academy", battingStyle: "Right-hand bat", bowlingStyle: "Left-arm medium", attributes: { batting: 45, bowling: 70, fielding: 63, stamina: 66, consistency: 65 }, generatedBio: "Clever cutter bowler who varies pace well." },
+    { displayName: "Rayyan Keeper", role: "wicketKeeper", country: "Academy", battingStyle: "Right-hand bat", bowlingStyle: "Wicket keeper", attributes: { batting: 66, bowling: 38, fielding: 74, stamina: 66, consistency: 64 }, generatedBio: "Reliable keeper-batter with quick hands." },
+    { displayName: "Arjun Anchor", role: "batter", country: "Academy", battingStyle: "Right-hand bat", bowlingStyle: "Leg spin", attributes: { batting: 69, bowling: 48, fielding: 62, stamina: 70, consistency: 70 }, generatedBio: "Steady anchor who keeps innings together." },
+    { displayName: "Kabir Spin", role: "bowler", country: "Academy", battingStyle: "Left-hand bat", bowlingStyle: "Right-arm leg spin", attributes: { batting: 42, bowling: 72, fielding: 60, stamina: 65, consistency: 66 }, generatedBio: "Attacking spinner with a useful wrong one." },
+    { displayName: "Usman Pace", role: "bowler", country: "Academy", battingStyle: "Right-hand bat", bowlingStyle: "Right-arm fast", attributes: { batting: 40, bowling: 74, fielding: 58, stamina: 70, consistency: 62 }, generatedBio: "Raw pace option with hard lengths." },
+    { displayName: "Ibrahim Cover", role: "allRounder", country: "Academy", battingStyle: "Right-hand bat", bowlingStyle: "Right-arm medium", attributes: { batting: 64, bowling: 62, fielding: 68, stamina: 66, consistency: 63 }, generatedBio: "Balanced all-rounder with safe fielding." },
+    { displayName: "Rohan Sweep", role: "batter", country: "Academy", battingStyle: "Left-hand bat", bowlingStyle: "Slow left arm", attributes: { batting: 68, bowling: 45, fielding: 61, stamina: 63, consistency: 62 }, generatedBio: "Spin-hitter who loves the sweep shot." },
+    { displayName: "Daniyal Yorker", role: "bowler", country: "Academy", battingStyle: "Right-hand bat", bowlingStyle: "Right-arm death pace", attributes: { batting: 41, bowling: 73, fielding: 60, stamina: 68, consistency: 64 }, generatedBio: "Death-over bowler with a toe-crushing yorker." },
+    { displayName: "Nihal Glide", role: "allRounder", country: "Academy", battingStyle: "Left-hand bat", bowlingStyle: "Off spin", attributes: { batting: 62, bowling: 61, fielding: 66, stamina: 65, consistency: 65 }, generatedBio: "Utility all-rounder who fills lineup gaps." },
+    { displayName: "Taimur Point", role: "batter", country: "Academy", battingStyle: "Right-hand bat", bowlingStyle: "Part-time medium", attributes: { batting: 65, bowling: 46, fielding: 70, stamina: 62, consistency: 60 }, generatedBio: "Compact batter and lively point fielder." },
+    { displayName: "Sahil Drift", role: "bowler", country: "Academy", battingStyle: "Right-hand bat", bowlingStyle: "Left-arm orthodox", attributes: { batting: 43, bowling: 69, fielding: 63, stamina: 64, consistency: 68 }, generatedBio: "Accurate spinner with subtle drift." },
   ];
 }
 
@@ -902,11 +1168,112 @@ async function callGemmaText({
   }
 }
 
+async function callAiText(options) {
+  const {
+    onModel = null,
+  } = options;
+  let googleSource = null;
+  try {
+    return await callHuggingFaceText({
+      ...options,
+      onModel: (model) => {
+        if (typeof onModel === "function") onModel(`huggingface:${model}`);
+      },
+    });
+  } catch (error) {
+    console.warn("Hugging Face generation failed; trying Google AI.", {
+      message: error && error.message ? error.message : String(error),
+    });
+  }
+  const text = await callGemmaText({
+    ...options,
+    onModel: (model) => {
+      googleSource = model;
+      if (typeof onModel === "function") onModel(`google:${model}`);
+    },
+  });
+  if (!googleSource && typeof onModel === "function") onModel("google-ai");
+  return text;
+}
+
+async function callHuggingFaceText({
+  system,
+  prompt,
+  maxTokens = 120,
+  temperature = 0.7,
+  timeoutMs = LLM_TIMEOUT_MS,
+  onModel = null,
+}) {
+  const token = getHuggingFaceToken();
+  if (!token) throw new Error("HUGGING_FACE_TOKEN is not configured.");
+  let lastError = null;
+  for (const model of HUGGING_FACE_MODELS) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const messages = [];
+      if (system) messages.push({ role: "system", content: system });
+      messages.push({ role: "user", content: prompt });
+      const response = await fetch(HUGGING_FACE_CHAT_URL, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          messages,
+          temperature,
+          max_tokens: maxTokens,
+        }),
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        const detail = await response.text().catch(() => "");
+        lastError = new Error(`Hugging Face ${response.status} for ${model}${detail ? `: ${detail.slice(0, 180)}` : ""}`);
+        if (response.status === 400 || response.status === 404 || response.status === 429 || response.status >= 500) continue;
+        throw lastError;
+      }
+      const data = await response.json();
+      const text = extractHuggingFaceChatText(data);
+      if (typeof onModel === "function") onModel(model);
+      if (text) return text;
+      lastError = new Error(`Hugging Face returned empty text for ${model}.`);
+    } catch (error) {
+      lastError = error;
+      if (error && error.name === "AbortError") {
+        lastError = new Error(`Hugging Face timed out for ${model}.`);
+      }
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  throw lastError || new Error("No Hugging Face models configured.");
+}
+
+function extractHuggingFaceChatText(data) {
+  const choice = data && data.choices && data.choices[0];
+  if (!choice) return "";
+  if (choice.message && typeof choice.message.content === "string") {
+    return choice.message.content.trim();
+  }
+  if (typeof choice.text === "string") return choice.text.trim();
+  return "";
+}
+
 function getGoogleAiApiKey() {
   try {
     return GOOGLE_AI_API_KEY.value() || process.env.GOOGLE_AI_API_KEY || "";
   } catch (_) {
     return process.env.GOOGLE_AI_API_KEY || "";
+  }
+}
+
+function getHuggingFaceToken() {
+  try {
+    return HUGGING_FACE_TOKEN.value() || process.env.HUGGING_FACE_TOKEN || process.env.HF_TOKEN || "";
+  } catch (_) {
+    return process.env.HUGGING_FACE_TOKEN || process.env.HF_TOKEN || "";
   }
 }
 
@@ -936,14 +1303,14 @@ function sanitizeGeneratedPlayer(raw, tier) {
   };
   return {
     id: `gen_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-    displayName: safeShortText(raw && raw.displayName, "Generated Player", 28),
+    displayName: safeShortText(raw && raw.displayName, "Academy Player", 28),
     isRealPlayer: false,
     playerTier: tier === "premium" ? "premium" : "free",
     role: normalizeRole(raw && raw.role, attributes),
-    country: safeShortText(raw && raw.country, "Generated", 28),
+    country: safeShortText(raw && raw.country, "Academy", 28),
     battingStyle: safeShortText(raw && raw.battingStyle, "Right-hand bat", 40),
     bowlingStyle: safeShortText(raw && raw.bowlingStyle, "Right-arm medium", 40),
-    generatedBio: safeShortText(raw && raw.generatedBio, "A generated Wicket Wars prospect.", 180),
+    generatedBio: safeShortText(raw && raw.generatedBio, "A promising Wicket Wars academy prospect.", 180),
     avatarUrl: safeShortText(raw && raw.avatarUrl, "", 500),
     cardImageAsset: safeShortText(raw && raw.cardImageAsset, "", 200),
     attributes,
@@ -961,12 +1328,12 @@ function fallbackGeneratedPlayer(prompt) {
   return {
     displayName: name,
     role,
-    country: "Generated",
+    country: "Academy",
     battingStyle: role === "wicketKeeper" ? "Left-hand bat" : "Right-hand bat",
     bowlingStyle: role === "wicketKeeper" ? "Wicket keeper" : "Right-arm medium",
     generatedBio: prompt
-      ? `Generated from your brief: ${safeShortText(prompt, "custom prospect", 70)}.`
-      : "A generated Wicket Wars prospect.",
+      ? `Club scout pick inspired by: ${safeShortText(prompt, "custom prospect", 70)}.`
+      : "A promising Wicket Wars academy prospect.",
     attributes: {
       batting: 56 + battingBias + Math.floor(Math.random() * 12),
       bowling: 50 + bowlingBias + Math.floor(Math.random() * 12),

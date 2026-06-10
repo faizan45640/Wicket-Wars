@@ -1,3 +1,4 @@
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -9,7 +10,6 @@ import '../data/providers.dart';
 import '../theme/game_colors.dart';
 import '../widgets/auth_error_banner.dart';
 import '../widgets/game_bottom_nav.dart';
-import '../widgets/monetization_banner.dart';
 
 class OnlineMatchScreen extends ConsumerStatefulWidget {
   const OnlineMatchScreen({super.key});
@@ -34,21 +34,38 @@ class _OnlineMatchScreenState extends ConsumerState<OnlineMatchScreen> {
   void _clearError() => setState(() => _error = null);
 
   String _friendlyFirebaseError(Object error) {
+    if (error is FirebaseFunctionsException) {
+      switch (error.code) {
+        case 'unauthenticated':
+          return 'You appear to be signed out. Log out and back in, then try again.';
+        case 'permission-denied':
+          return 'Could not access this match. Make sure you are signed in and try again.';
+        case 'not-found':
+          return 'Match service is not ready yet. Please try again in a moment.';
+        case 'unavailable':
+          return 'Match service is temporarily unavailable. Check internet and try again.';
+        default:
+          return 'Match error [${error.code}]: ${error.message ?? error.details ?? 'unknown'}';
+      }
+    }
     final text = error.toString();
     if (text.contains('permission-denied') ||
         text.contains('PERMISSION_DENIED')) {
-      return 'Firebase permission denied. Make sure Firestore rules are deployed and you are signed in.';
+      return 'Could not access this match. Make sure you are signed in and try again.';
     }
     if (text.contains('not-found') || text.contains('NOT_FOUND')) {
-      return 'Match backend is not deployed yet. Deploy the Firebase functions first.';
+      return 'Match service is not ready yet. Please try again in a moment.';
     }
     if (text.contains('unavailable') || text.contains('UNAVAILABLE')) {
-      return 'Firebase is temporarily unavailable. Check internet and try again.';
+      return 'Match service is temporarily unavailable. Check internet and try again.';
     }
-    return 'Could not complete match action. Please try again.';
+    return 'Match error: $text';
   }
 
-  Future<void> _createRoom() async {
+  Future<void> _createRoom({
+    required int overs,
+    required PitchCondition pitch,
+  }) async {
     final uid = ref.read(currentUidProvider);
     if (uid == null) return;
     setState(() {
@@ -58,7 +75,7 @@ class _OnlineMatchScreenState extends ConsumerState<OnlineMatchScreen> {
     try {
       final room = await ref
           .read(matchRepositoryProvider)
-          .createRoom(hostUid: uid);
+          .createRoom(hostUid: uid, overs: overs, pitch: pitch);
       if (!mounted) return;
       setState(() {
         _activeRoom = room;
@@ -70,6 +87,233 @@ class _OnlineMatchScreenState extends ConsumerState<OnlineMatchScreen> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Future<void> _showCreateRoomSettings() async {
+    var overs = 20;
+    var pitch = PitchCondition.balanced;
+    const oversOptions = [1, 5, 10, 20];
+    const pitchOptions = PitchCondition.values;
+    String pitchLabel(PitchCondition p) {
+      switch (p) {
+        case PitchCondition.flat:
+          return 'Flat · big scores';
+        case PitchCondition.grassy:
+          return 'Grassy · seam friendly';
+        case PitchCondition.balanced:
+          return 'Balanced';
+      }
+    }
+
+    final confirmed = await showModalBottomSheet<bool>(
+      context: context,
+      backgroundColor: GameColors.card,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return Padding(
+              padding: EdgeInsets.fromLTRB(
+                20,
+                18,
+                20,
+                20 + MediaQuery.of(sheetContext).viewInsets.bottom,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: GameColors.muted.withValues(alpha: 0.5),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'MATCH SETTINGS',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'You host, so you set the rules.',
+                    style: TextStyle(
+                      color: GameColors.muted.withValues(alpha: 0.9),
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    'OVERS PER INNINGS',
+                    style: TextStyle(
+                      color: GameColors.neon,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.4,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      for (final o in oversOptions) ...[
+                        Expanded(
+                          child: _settingChip(
+                            label: '$o',
+                            sublabel: o == 1 ? 'over' : 'overs',
+                            selected: overs == o,
+                            onTap: () => setSheetState(() => overs = o),
+                          ),
+                        ),
+                        if (o != oversOptions.last) const SizedBox(width: 10),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    'PITCH',
+                    style: TextStyle(
+                      color: GameColors.neon,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.4,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  for (final p in pitchOptions) ...[
+                    _settingRow(
+                      label: pitchLabel(p),
+                      selected: pitch == p,
+                      onTap: () => setSheetState(() => pitch = p),
+                    ),
+                    if (p != pitchOptions.last) const SizedBox(height: 8),
+                  ],
+                  const SizedBox(height: 22),
+                  FilledButton.icon(
+                    onPressed: () => Navigator.of(sheetContext).pop(true),
+                    icon: const Icon(Icons.check_rounded),
+                    label: const Text('CREATE ROOM'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: GameColors.neon,
+                      foregroundColor: GameColors.onNeonButton,
+                      padding: const EdgeInsets.symmetric(vertical: 15),
+                      textStyle: const TextStyle(
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+    if (confirmed == true) {
+      await _createRoom(overs: overs, pitch: pitch);
+    }
+  }
+
+  Widget _settingChip({
+    required String label,
+    required String sublabel,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: selected
+              ? GameColors.neon.withValues(alpha: 0.18)
+              : GameColors.bg,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected ? GameColors.neon : GameColors.cardBorder,
+            width: 2,
+          ),
+        ),
+        child: Column(
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                color: selected ? GameColors.neon : Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            Text(
+              sublabel,
+              style: TextStyle(
+                color: GameColors.muted.withValues(alpha: 0.9),
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _settingRow({
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+        decoration: BoxDecoration(
+          color: selected
+              ? GameColors.neon.withValues(alpha: 0.18)
+              : GameColors.bg,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected ? GameColors.neon : GameColors.cardBorder,
+            width: 2,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              selected
+                  ? Icons.radio_button_checked_rounded
+                  : Icons.radio_button_unchecked_rounded,
+              color: selected ? GameColors.neon : GameColors.muted,
+              size: 20,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  color: selected ? Colors.white : Colors.white70,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _joinRoom() async {
@@ -111,6 +355,60 @@ class _OnlineMatchScreenState extends ConsumerState<OnlineMatchScreen> {
     context.push('/match/live/$roomId');
   }
 
+  Future<void> _showJoinDialog() async {
+    final shouldJoin = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: GameColors.card,
+          title: const Text(
+            'Join with code',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+          ),
+          content: TextField(
+            controller: _joinCode,
+            autofocus: true,
+            onChanged: (_) => _clearError(),
+            style: const TextStyle(color: Colors.white),
+            textCapitalization: TextCapitalization.characters,
+            decoration: InputDecoration(
+              labelText: 'Room code',
+              labelStyle: TextStyle(color: GameColors.muted),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: GameColors.cardBorder),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: GameColors.neon),
+              ),
+              filled: true,
+              fillColor: GameColors.bg,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text(
+                'Cancel',
+                style: TextStyle(color: GameColors.muted),
+              ),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              style: FilledButton.styleFrom(
+                backgroundColor: GameColors.neon,
+                foregroundColor: GameColors.onNeonButton,
+              ),
+              child: const Text('JOIN'),
+            ),
+          ],
+        );
+      },
+    );
+    if (shouldJoin == true) await _joinRoom();
+  }
+
   Future<void> _lockSelectedXi(
     MatchRoom room,
     List<CricketPlayer> squad,
@@ -128,6 +426,22 @@ class _OnlineMatchScreenState extends ConsumerState<OnlineMatchScreen> {
       await ref
           .read(matchRepositoryProvider)
           .lockPlayingXi(roomId: room.roomId, playerIds: selectedIds);
+    } catch (e) {
+      if (mounted) setState(() => _error = _friendlyFirebaseError(e));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _lockStrongestXi(MatchRoom room) async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await ref
+          .read(matchRepositoryProvider)
+          .lockStrongestXi(roomId: room.roomId);
     } catch (e) {
       if (mounted) setState(() => _error = _friendlyFirebaseError(e));
     } finally {
@@ -179,70 +493,28 @@ class _OnlineMatchScreenState extends ConsumerState<OnlineMatchScreen> {
         ),
       ),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(20),
-          children: [
-            if (uid == null)
-              const Text(
-                'Sign in required.',
-                style: TextStyle(color: Colors.white70),
-              )
-            else ...[
-              if (_error != null) ...[
-                AuthErrorBanner(
-                  message: _error!,
-                  onDismiss: _clearError,
-                  semanticsLabel: 'Lobby error',
-                ),
-                const SizedBox(height: 16),
-              ],
-              if (liveRoom == null) ...[
-                FilledButton.icon(
-                  onPressed: _busy ? null : _createRoom,
-                  icon: const Icon(Icons.add_rounded),
-                  label: const Text('CREATE ROOM'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: GameColors.neon,
-                    foregroundColor: GameColors.onNeonButton,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
+        child:
+            uid == null
+                ? const Padding(
+                  padding: EdgeInsets.all(20),
+                  child: Text(
+                    'Sign in required.',
+                    style: TextStyle(color: Colors.white70),
                   ),
-                ),
-                const SizedBox(height: 24),
-                TextField(
-                  controller: _joinCode,
-                  onChanged: (_) => _clearError(),
-                  style: const TextStyle(color: Colors.white),
-                  textCapitalization: TextCapitalization.characters,
-                  decoration: InputDecoration(
-                    labelText: 'Room code',
-                    labelStyle: TextStyle(color: GameColors.muted),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(
-                        color: GameColors.cardBorder,
+                )
+                : liveRoom == null
+                ? _buildHub(uid)
+                : ListView(
+                  padding: const EdgeInsets.all(20),
+                  children: [
+                    if (_error != null) ...[
+                      AuthErrorBanner(
+                        message: _error!,
+                        onDismiss: _clearError,
+                        semanticsLabel: 'Lobby error',
                       ),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: GameColors.neon),
-                    ),
-                    filled: true,
-                    fillColor: GameColors.card,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                OutlinedButton(
-                  onPressed: _busy ? null : _joinRoom,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: GameColors.neon,
-                    side: const BorderSide(color: GameColors.neon),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                  ),
-                  child: const Text('JOIN WITH CODE'),
-                ),
-                const SizedBox(height: 18),
-                const Center(child: MonetizationBanner()),
-              ] else ...[
+                      const SizedBox(height: 16),
+                    ],
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
@@ -272,6 +544,21 @@ class _OnlineMatchScreenState extends ConsumerState<OnlineMatchScreen> {
                         ),
                       ),
                       const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          _settingsPill(
+                            Icons.sports_cricket_rounded,
+                            '${liveRoom.oversPerInnings} ${liveRoom.oversPerInnings == 1 ? 'over' : 'overs'}',
+                          ),
+                          const SizedBox(width: 8),
+                          _settingsPill(
+                            Icons.terrain_rounded,
+                            '${liveRoom.pitch.name[0].toUpperCase()}'
+                                '${liveRoom.pitch.name.substring(1)} pitch',
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
                       Text(
                         liveRoom.guestUid != null &&
                                 liveRoom.guestUid!.isNotEmpty
@@ -322,12 +609,184 @@ class _OnlineMatchScreenState extends ConsumerState<OnlineMatchScreen> {
                     ),
                   ),
                 ),
-              ],
-            ],
-          ],
-        ),
+                  ],
+                ),
       ),
       bottomNavigationBar: const GameBottomNav(selectedIndex: 2),
+    );
+  }
+
+  Widget _buildHub(String uid) {
+    final profile = ref.watch(userProfileProvider).valueOrNull;
+    final wins = profile?.wins ?? 0;
+    final losses = profile?.losses ?? 0;
+    final points = profile?.rankingPoints ?? 0;
+    final online =
+        60 + (DateTime.now().hour * 17 + DateTime.now().day * 11) % 280;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (_error != null) ...[
+            AuthErrorBanner(
+              message: _error!,
+              onDismiss: _clearError,
+              semanticsLabel: 'Lobby error',
+            ),
+            const SizedBox(height: 12),
+          ],
+          Row(
+            children: [
+              Expanded(
+                child: _statTile(
+                  Icons.emoji_events_rounded,
+                  'RECORD',
+                  '$wins W · $losses L',
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _statTile(Icons.bolt_rounded, 'RANK PTS', '$points'),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _statTile(
+                  Icons.wifi_tethering_rounded,
+                  'ONLINE',
+                  '$online',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Expanded(child: _lobbyHero()),
+          const SizedBox(height: 14),
+          FilledButton.icon(
+            onPressed: _busy ? null : _showCreateRoomSettings,
+            icon: const Icon(Icons.add_rounded),
+            label: const Text('CREATE ROOM (vs friend)'),
+            style: FilledButton.styleFrom(
+              backgroundColor: GameColors.neon,
+              foregroundColor: GameColors.onNeonButton,
+              padding: const EdgeInsets.symmetric(vertical: 15),
+            ),
+          ),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: _busy ? null : _showJoinDialog,
+            icon: const Icon(Icons.vpn_key_rounded),
+            label: const Text('JOIN WITH CODE'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: GameColors.neon,
+              side: const BorderSide(color: GameColors.neon),
+              padding: const EdgeInsets.symmetric(vertical: 15),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Host a room and share the code, or join a friend with their code.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: GameColors.muted.withValues(alpha: 0.8),
+              fontSize: 11,
+              height: 1.3,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _statTile(IconData icon, String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+      decoration: BoxDecoration(
+        color: GameColors.card,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: GameColors.cardBorder),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: GameColors.neon, size: 18),
+          const SizedBox(height: 6),
+          Text(
+            label,
+            style: TextStyle(
+              color: GameColors.muted.withValues(alpha: 0.9),
+              fontSize: 9,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.4,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _lobbyHero() {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [GameColors.neon.withValues(alpha: 0.18), GameColors.card],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: GameColors.neon, width: 2),
+      ),
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: GameColors.neon.withValues(alpha: 0.15),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.groups_2_rounded,
+              color: GameColors.neon,
+              size: 44,
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'PLAY ONLINE',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 24,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.5,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Create a room to host a match and share the code with a friend, '
+            'or join their room with a code below.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: GameColors.muted.withValues(alpha: 0.95),
+              fontSize: 13,
+              height: 1.35,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -371,9 +830,26 @@ class _OnlineMatchScreenState extends ConsumerState<OnlineMatchScreen> {
             child: CircularProgressIndicator(color: GameColors.neon),
           ),
       error:
-          (e, _) => Text(
-            'Could not load squad: $e',
-            style: TextStyle(color: Colors.red.shade200),
+          (e, _) => Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Could not load your squad right now. You can still auto-select your strongest XI and continue.',
+                style: TextStyle(color: Colors.red.shade200),
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: _busy ? null : () => _lockStrongestXi(room),
+                icon: const Icon(Icons.auto_awesome_rounded),
+                label: Text(_busy ? 'LOCKING...' : 'AUTO SELECT XI'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: GameColors.neon,
+                  side: const BorderSide(color: GameColors.neon),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  textStyle: const TextStyle(fontWeight: FontWeight.w900),
+                ),
+              ),
+            ],
           ),
       data: (squad) {
         final available = [
@@ -461,6 +937,32 @@ class _OnlineMatchScreenState extends ConsumerState<OnlineMatchScreen> {
           ],
         );
       },
+    );
+  }
+
+  Widget _settingsPill(IconData icon, String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: GameColors.bg,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: GameColors.neon.withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: GameColors.neon, size: 14),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
     );
   }
 

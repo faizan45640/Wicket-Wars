@@ -13,7 +13,6 @@ class FirebaseUserRepository implements UserRepository {
     : _db = firestore ?? FirebaseFirestore.instance;
 
   final FirebaseFirestore _db;
-  final Set<String> _seedWriteStarted = {};
 
   UserProfile _defaultProfile(String uid) {
     return starterProfile(uid: uid, displayName: 'Player');
@@ -25,12 +24,10 @@ class FirebaseUserRepository implements UserRepository {
     return _db.userDocument(uid).snapshots().map((snap) {
       final data = snap.data();
       if (!snap.exists || data == null) {
-        if (!_seedWriteStarted.contains(uid)) {
-          _seedWriteStarted.add(uid);
-          upsertProfile(
-            _defaultProfile(uid),
-          ).then((_) {}, onError: (_, __) => _seedWriteStarted.remove(uid));
-        }
+        // Return an in-memory placeholder only. Persisting a default profile
+        // here races with sign-up's real-name write and can overwrite the
+        // user's display name (and leaderboard row) with "Player".
+        // Profile creation is handled by ensureStarterData on sign-up/login.
         return _defaultProfile(uid);
       }
       return UserProfile.fromMap(decodeFirestoreMap(data));

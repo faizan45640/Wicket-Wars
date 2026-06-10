@@ -1,3 +1,4 @@
+import '../training_rules.dart';
 import 'player_attributes.dart';
 import 'player_role.dart';
 import 'player_tier.dart';
@@ -25,6 +26,9 @@ class CricketPlayer {
     this.cardImageAsset,
     this.training,
 
+    /// Max overall this free card can be trained to. Null until first derived.
+    this.potentialOverall,
+
     /// Set when this row was created from `players_catalog/{id}`.
     this.catalogPlayerId,
   });
@@ -46,11 +50,25 @@ class CricketPlayer {
   /// Null when not in training.
   final TrainingState? training;
 
+  /// Max overall this free card can be trained to (potential cap). Null until
+  /// first derived from [id]; persisted once the player trains.
+  final int? potentialOverall;
+
   bool get isTraining => training != null && !training!.isComplete;
   bool get availableForXi => !isTraining;
 
-  /// Timed training + coin “upgrade weakest stat” — allowed only for free custom cards.
+  /// Training (energy + coins) — allowed only for free custom cards.
   bool get canTrainAndUpgrade => !isRealPlayer && playerTier == PlayerTier.free;
+
+  /// Overall this player can be trained up to. Fixed cards return their current
+  /// overall; free cards use the stored value or a stable derived ceiling.
+  int get effectivePotential {
+    if (!canTrainAndUpgrade) return attributes.overall;
+    final stored = potentialOverall;
+    if (stored != null) return stored < attributes.overall ? attributes.overall : stored;
+    final pot = attributes.overall + potentialHeadroomFromId(id);
+    return pot > kFreePotentialCeiling ? kFreePotentialCeiling : pot;
+  }
 
   PlayerRole get effectiveRole =>
       role ??
@@ -83,6 +101,7 @@ class CricketPlayer {
     'cardImageAsset': cardImageAsset,
     'attributes': attributes.toMap(),
     'training': training?.toMap(),
+    if (canTrainAndUpgrade) 'potentialOverall': effectivePotential,
   };
 
   factory CricketPlayer.fromMap(Map<String, dynamic> map) {
@@ -117,6 +136,7 @@ class CricketPlayer {
                 Map<String, dynamic>.from(map['training'] as Map),
               )
               : null,
+      potentialOverall: (map['potentialOverall'] as num?)?.round(),
     );
   }
 
@@ -135,6 +155,7 @@ class CricketPlayer {
     String? cardImageAsset,
     PlayerAttributes? attributes,
     TrainingState? training,
+    int? potentialOverall,
     bool clearTraining = false,
   }) {
     return CricketPlayer(
@@ -152,6 +173,7 @@ class CricketPlayer {
       cardImageAsset: cardImageAsset ?? this.cardImageAsset,
       attributes: attributes ?? this.attributes,
       training: clearTraining ? null : (training ?? this.training),
+      potentialOverall: potentialOverall ?? this.potentialOverall,
     );
   }
 }

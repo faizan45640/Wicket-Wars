@@ -40,7 +40,7 @@ class PlaceholderSquadRepository implements SquadRepository {
       isRealPlayer: false,
       playerTier: PlayerTier.free,
       role: role,
-      country: 'Generated',
+      country: 'Academy',
       battingStyle:
           role == PlayerRole.wicketKeeper ? 'Left-hand bat' : 'Right-hand bat',
       bowlingStyle:
@@ -49,8 +49,8 @@ class PlaceholderSquadRepository implements SquadRepository {
               : 'Right-arm medium',
       generatedBio:
           prompt?.trim().isNotEmpty == true
-              ? 'Generated from: ${prompt!.trim()}'
-              : 'A generated Wicket Wars prospect.',
+              ? 'A club scout pick inspired by: ${prompt!.trim()}'
+              : 'A promising Wicket Wars academy prospect.',
       attributes: PlayerAttributes(
         batting: 52 + _random.nextInt(24),
         bowling: 48 + _random.nextInt(24),

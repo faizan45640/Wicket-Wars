@@ -18,6 +18,8 @@ MatchRoom? applyOneDelivery(
   Random rng, {
   List<CricketPlayer> hostPlayers = const [],
   List<CricketPlayer> guestPlayers = const [],
+  String? shot,
+  String? bowl,
 }) {
   if (room.status == MatchRoomStatus.completed) return null;
   if (room.hostBatFirst == null) return null;
@@ -27,7 +29,19 @@ MatchRoom? applyOneDelivery(
   final bw = battingHost ? room.hostWickets : room.guestWickets;
   final bb = battingHost ? room.hostLegalBalls : room.guestLegalBalls;
 
-  if (bw >= 10 || bb >= 120) return null;
+  if (bw >= 10 || bb >= room.maxBalls) return null;
+
+  final isChase = room.inningsNumber == 2;
+  final ballsLeft = (room.maxBalls - bb).clamp(1, room.maxBalls);
+  final rrr = isChase && room.chaseTarget != null
+      ? ((room.chaseTarget! - br) / ballsLeft) * 6
+      : 0.0;
+  final bowlType = kBallTypes.contains(bowl)
+      ? bowl!
+      : _cpuBowl(rng, bb, room.maxBalls);
+  final shotType = kShotTypes.contains(shot)
+      ? shot!
+      : _cpuShot(rng, bw, isChase, rrr);
 
   if (room.inningsNumber == 2 &&
       room.chaseTarget != null &&
@@ -42,6 +56,9 @@ MatchRoom? applyOneDelivery(
 
   final ctx = SimBallContext(
     pitch: room.pitch,
+    maxBalls: room.maxBalls,
+    bowlType: bowlType,
+    shotType: shotType,
     legalBallsInInnings: bb,
     wicketsDown: bw,
     runsScoredThisInnings: br,
@@ -88,20 +105,24 @@ MatchRoom? applyOneDelivery(
   final batterName = batter?.displayName ?? who;
   final bowlerName = bowler?.displayName;
   final line =
-      '$over · $batterName${bowlerName == null ? '' : ' vs $bowlerName'}: ${runs > 0 ? '$runs' : 'dot'}${wicket > 0 ? ' · OUT!' : ''}';
+      '$over · $batterName ($shotType)${bowlerName == null ? '' : ' vs $bowlerName'} ($bowlType): ${runs > 0 ? '$runs' : 'dot'}${wicket > 0 ? ' · OUT!' : ''}';
 
   var inn = room.inningsNumber;
   var target = room.chaseTarget;
   var tail = [...room.commentaryTail, line];
   if (tail.length > 30) tail = tail.sublist(tail.length - 30);
 
+  var recent = [...room.recentBalls, wicket > 0 ? 'W' : '$runs'];
+  if (recent.length > 12) recent = recent.sublist(recent.length - 12);
+
   final newBr = battingHost ? hr : gr;
   final newBw = battingHost ? hw : gw;
   final newBb = battingHost ? hb : gb;
 
-  if (inn == 1 && (newBw >= 10 || newBb >= 120)) {
+  if (inn == 1 && (newBw >= 10 || newBb >= room.maxBalls)) {
     target = newBr + 1;
     inn = 2;
+    recent = [];
     tail = [...tail, '— End of 1st innings ($newBr/$newBw). Target: $target —'];
     if (tail.length > 30) tail = tail.sublist(tail.length - 30);
   }
@@ -117,7 +138,53 @@ MatchRoom? applyOneDelivery(
     chaseTarget: target,
     deliveryNumber: room.deliveryNumber + 1,
     commentaryTail: tail,
+    recentBalls: recent,
   );
+}
+
+String _cpuBowl(Random rng, int legalBalls, int maxBalls) {
+  final death = legalBalls >= maxBalls * 0.75;
+  return _weighted(rng, [
+    ('pace', death ? 2 : 3),
+    ('bouncer', death ? 3 : 2),
+    ('yorker', death ? 4 : 2),
+    ('spin', 3),
+  ]);
+}
+
+String _cpuShot(Random rng, int wicketsDown, bool isChase, double rrr) {
+  if (isChase && rrr >= 10) {
+    return _weighted(rng, [
+      ('loft', 4),
+      ('pull', 3),
+      ('drive', 2),
+      ('block', 1),
+    ]);
+  }
+  if (wicketsDown >= 7) {
+    return _weighted(rng, [
+      ('block', 4),
+      ('drive', 3),
+      ('pull', 1),
+      ('loft', 1),
+    ]);
+  }
+  return _weighted(rng, [
+    ('drive', 4),
+    ('pull', 2),
+    ('block', 2),
+    ('loft', 2),
+  ]);
+}
+
+String _weighted(Random rng, List<(String, int)> options) {
+  final total = options.fold<int>(0, (a, o) => a + o.$2);
+  var u = rng.nextDouble() * total;
+  for (final o in options) {
+    u -= o.$2;
+    if (u <= 0) return o.$1;
+  }
+  return options.last.$1;
 }
 
 CricketPlayer? _selectBatter(
@@ -158,6 +225,6 @@ bool shouldAutoCompleteMatchAfterDelivery(
   if (room.chaseTarget != null && score >= room.chaseTarget!) return true;
   final wk = strikerWasHost ? room.hostWickets : room.guestWickets;
   final bl = strikerWasHost ? room.hostLegalBalls : room.guestLegalBalls;
-  if (wk >= 10 || bl >= 120) return true;
+  if (wk >= 10 || bl >= room.maxBalls) return true;
   return false;
 }

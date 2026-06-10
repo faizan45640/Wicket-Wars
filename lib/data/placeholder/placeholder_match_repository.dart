@@ -17,8 +17,12 @@ class PlaceholderMatchRepository implements MatchRepository {
   }
 
   @override
-  Future<MatchRoom> createRoom({required String hostUid}) async {
-    return _store.newRoom(hostUid: hostUid, pitch: PitchCondition.balanced);
+  Future<MatchRoom> createRoom({
+    required String hostUid,
+    int overs = 20,
+    PitchCondition pitch = PitchCondition.balanced,
+  }) async {
+    return _store.newRoom(hostUid: hostUid, pitch: pitch, overs: overs);
   }
 
   @override
@@ -73,7 +77,7 @@ class PlaceholderMatchRepository implements MatchRepository {
         guestLegalBalls: 0,
         deliveryNumber: 0,
         commentaryTail: [
-          'Toss - ${hostBatFirst ? 'Host' : 'Guest'} bats first. T20: 20 overs per innings.',
+          'Toss - ${hostBatFirst ? 'Host' : 'Guest'} bats first. ${room.oversPerInnings} ${room.oversPerInnings == 1 ? 'over' : 'overs'} per innings.',
         ],
       );
     }
@@ -96,7 +100,11 @@ class PlaceholderMatchRepository implements MatchRepository {
   }
 
   @override
-  Future<void> advanceDelivery({required String roomId}) async {
+  Future<void> advanceDelivery({
+    required String roomId,
+    String? shot,
+    String? bowl,
+  }) async {
     await transactRoom(roomId, (room) {
       if (room.status == MatchRoomStatus.completed) return room;
       if (_isFinishedScoreState(room)) return _completed(room);
@@ -105,10 +113,24 @@ class PlaceholderMatchRepository implements MatchRepository {
         _random,
         hostPlayers: _selectedPlayers(room.hostUid, room.hostPlayingXi),
         guestPlayers: _selectedPlayers(room.guestUid, room.guestPlayingXi),
+        shot: shot,
+        bowl: bowl,
       );
       if (next == null) return room;
       return _isFinishedScoreState(next) ? _completed(next) : next;
     });
+  }
+
+  @override
+  Future<void> submitChoice({
+    required String roomId,
+    String? shot,
+    String? bowl,
+    bool force = false,
+  }) async {
+    // Demo mode is single-device, so there is no second human to wait on:
+    // resolve immediately, letting the engine CPU-fill the missing side.
+    await advanceDelivery(roomId: roomId, shot: shot, bowl: bowl);
   }
 
   @override

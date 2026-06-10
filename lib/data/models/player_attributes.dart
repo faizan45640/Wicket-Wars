@@ -22,6 +22,40 @@ class PlayerAttributes {
   int get overall =>
       ((batting * 3 + bowling * 3 + fielding + stamina + consistency) / 9).round();
 
+  /// Reads an attribute by its key ('batting', 'bowling', ...).
+  int valueOf(String key) {
+    switch (key) {
+      case 'batting':
+        return batting;
+      case 'bowling':
+        return bowling;
+      case 'fielding':
+        return fielding;
+      case 'stamina':
+        return stamina;
+      case 'consistency':
+        return consistency;
+    }
+    return 0;
+  }
+
+  /// Returns a copy with the attribute [key] increased by [by] (clamped 0..100).
+  PlayerAttributes bumped(String key, int by) {
+    switch (key) {
+      case 'batting':
+        return copyWith(batting: batting + by);
+      case 'bowling':
+        return copyWith(bowling: bowling + by);
+      case 'fielding':
+        return copyWith(fielding: fielding + by);
+      case 'stamina':
+        return copyWith(stamina: stamina + by);
+      case 'consistency':
+        return copyWith(consistency: consistency + by);
+    }
+    return this;
+  }
+
   Map<String, dynamic> toMap() => {
         'batting': batting,
         'bowling': bowling,

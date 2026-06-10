@@ -18,6 +18,9 @@ class SimBallContext {
     required this.wicketsDown,
     required this.runsScoredThisInnings,
     required this.isChaseInnings,
+    this.maxBalls = 120,
+    this.bowlType,
+    this.shotType,
     this.chaseTarget,
     this.battingRating = 60,
     this.bowlingRating = 60,
@@ -27,6 +30,16 @@ class SimBallContext {
   });
 
   final PitchCondition pitch;
+
+  /// Legal deliveries that make up one innings (overs × 6).
+  final int maxBalls;
+
+  /// Chosen delivery type (`pace`/`bouncer`/`yorker`/`spin`) — null = neutral.
+  final String? bowlType;
+
+  /// Chosen shot type (`block`/`drive`/`loft`/`pull`) — null = neutral.
+  final String? shotType;
+
   final int legalBallsInInnings;
   final int wicketsDown;
   final int runsScoredThisInnings;
@@ -38,14 +51,14 @@ class SimBallContext {
   final int staminaRating;
   final int consistencyRating;
 
-  bool get isDeathOvers => legalBallsInInnings >= 90;
+  bool get isDeathOvers => legalBallsInInnings >= maxBalls * 0.75;
 
   /// Required runs per over to win (meaningful only in chase).
   double get requiredRunRatePerOver {
     if (!isChaseInnings || chaseTarget == null) return 0;
     final need = chaseTarget! - runsScoredThisInnings;
     if (need <= 0) return 0;
-    final ballsLeft = (120 - legalBallsInInnings).clamp(1, 120);
+    final ballsLeft = (maxBalls - legalBallsInInnings).clamp(1, maxBalls);
     return (need / ballsLeft) * 6;
   }
 }
@@ -113,12 +126,21 @@ SimBallResult simulateBall(SimBallContext ctx, Random rng) {
       p4 *= 1.1;
       p6 *= 1.18;
       pW *= 1.08;
-    } else if (rrr <= 5 && ctx.legalBallsInInnings > 60) {
+    } else if (rrr <= 5 && ctx.legalBallsInInnings > ctx.maxBalls * 0.5) {
       pDot *= 1.05;
       p6 *= 0.92;
       pW *= 0.96;
     }
   }
+
+  final m = matchupFactors(ctx.bowlType, ctx.shotType);
+  pDot *= m[0];
+  p1 *= m[1];
+  p2 *= m[2];
+  p3 *= m[3];
+  p4 *= m[4];
+  p6 *= m[5];
+  pW *= m[6];
 
   var probs = <double>[pDot, p1, p2, p3, p4, p6, pW];
   final sum = probs.reduce((a, b) => a + b);
@@ -149,4 +171,86 @@ SimBallResult simulateBall(SimBallContext ctx, Random rng) {
     }
   }
   return const SimBallResult(runs: 0, wicket: 0);
+}
+
+/// Allowed interactive choices, shared with the backend engine.
+const List<String> kBallTypes = ['pace', 'bouncer', 'yorker', 'spin'];
+const List<String> kShotTypes = ['block', 'drive', 'loft', 'pull'];
+
+/// Multiplicative outcome modifiers from the bowl-type vs shot-type matchup.
+/// Order: [dot, 1, 2, 3, 4, 6, W]. Mirrors `matchupFactors` in functions/index.js.
+List<double> matchupFactors(String? bowl, String? shot) {
+  final f = <double>[1, 1, 1, 1, 1, 1, 1];
+  switch (shot) {
+    case 'block':
+      f[0] *= 1.6;
+      f[1] *= 0.8;
+      f[2] *= 0.5;
+      f[3] *= 0.3;
+      f[4] *= 0.25;
+      f[5] *= 0.1;
+      f[6] *= 0.45;
+      break;
+    case 'drive':
+      f[0] *= 0.95;
+      f[1] *= 1.1;
+      f[2] *= 1.1;
+      f[4] *= 1.35;
+      f[5] *= 0.8;
+      break;
+    case 'loft':
+      f[0] *= 0.9;
+      f[1] *= 0.6;
+      f[4] *= 1.5;
+      f[5] *= 2.4;
+      f[6] *= 1.9;
+      break;
+    case 'pull':
+      f[0] *= 0.92;
+      f[2] *= 1.2;
+      f[4] *= 1.45;
+      f[5] *= 1.6;
+      f[6] *= 1.5;
+      break;
+  }
+  switch (bowl) {
+    case 'bouncer':
+      f[5] *= 1.15;
+      f[6] *= 1.1;
+      break;
+    case 'yorker':
+      f[0] *= 1.4;
+      f[1] *= 0.9;
+      f[4] *= 0.5;
+      f[5] *= 0.4;
+      f[6] *= 1.2;
+      break;
+    case 'spin':
+      f[1] *= 1.1;
+      f[5] *= 0.9;
+      f[6] *= 1.05;
+      break;
+  }
+  if (bowl == 'yorker' && (shot == 'loft' || shot == 'pull')) {
+    f[6] *= 1.8;
+    f[4] *= 0.5;
+    f[5] *= 0.4;
+  }
+  if (bowl == 'yorker' && shot == 'block') {
+    f[6] *= 0.7;
+    f[0] *= 1.1;
+  }
+  if (bowl == 'bouncer' && shot == 'pull') {
+    f[4] *= 1.4;
+    f[5] *= 1.5;
+    f[6] *= 0.7;
+  }
+  if (bowl == 'bouncer' && (shot == 'drive' || shot == 'block')) {
+    f[0] *= 1.2;
+    f[6] *= 1.25;
+  }
+  if (bowl == 'spin' && shot == 'loft') f[6] *= 1.5;
+  if (bowl == 'spin' && shot == 'pull') f[6] *= 1.2;
+  if (bowl == 'pace' && shot == 'drive') f[4] *= 1.2;
+  return f;
 }

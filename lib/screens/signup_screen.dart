@@ -10,6 +10,8 @@ import '../data/onboarding_seed.dart';
 import '../data/providers.dart';
 import '../theme/game_colors.dart';
 import '../widgets/auth_error_banner.dart';
+import '../widgets/auth_logo.dart';
+import '../widgets/game_loading_overlay.dart';
 
 class SignupScreen extends ConsumerStatefulWidget {
   const SignupScreen({super.key});
@@ -78,6 +80,20 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        _buildForm(context),
+        Positioned.fill(
+          child: GameLoadingOverlay(
+            visible: _loading,
+            title: 'CREATING ACCOUNT',
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildForm(BuildContext context) {
     return Scaffold(
       backgroundColor: GameColors.bg,
       appBar: AppBar(
@@ -110,7 +126,8 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const SizedBox(height: 8),
+                    const AuthLogo(height: 112),
+                    const SizedBox(height: 12),
                     const Text(
                       'CREATE ACCOUNT',
                       textAlign: TextAlign.center,
@@ -121,7 +138,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                         letterSpacing: 0.8,
                       ),
                     ),
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 24),
                     TextFormField(
                       controller: _displayName,
                       textCapitalization: TextCapitalization.words,

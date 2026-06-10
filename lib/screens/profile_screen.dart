@@ -10,7 +10,6 @@ import '../data/models/user_profile.dart';
 import '../data/providers.dart';
 import '../theme/game_colors.dart';
 import '../widgets/game_bottom_nav.dart';
-import '../widgets/monetization_banner.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -81,53 +80,68 @@ class ProfileScreen extends ConsumerWidget {
 
           final initial =
               p.displayName.isNotEmpty ? p.displayName[0].toUpperCase() : '?';
+          final stats = <(IconData, String, String)>[
+            (Icons.sports_cricket_outlined, 'Matches', '${p.matchesPlayed}'),
+            (Icons.emoji_events_outlined, 'Wins', '${p.wins}'),
+            (Icons.close_rounded, 'Losses', '${p.losses}'),
+            (Icons.percent_outlined, 'Win rate', '$winRate%'),
+            (Icons.sports_baseball_outlined, 'Runs', _fmt.format(totalRuns)),
+            (Icons.star_border_rounded, 'Ranking', _fmt.format(p.rankingPoints)),
+            (
+              Icons.local_fire_department_outlined,
+              'Streak',
+              '${p.dailyStreak}d',
+            ),
+            (Icons.monetization_on_outlined, 'Coins', _fmt.format(p.coins)),
+          ];
           return SafeArea(
             top: false,
-            child: ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
-              children: [
-                Center(
-                  child: CircleAvatar(
-                    radius: 50,
-                    backgroundColor: GameColors.bg,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(color: neonGreen, width: 2.5),
-                        boxShadow: [
-                          BoxShadow(
-                            color: neonGreen.withValues(alpha: 0.5),
-                            blurRadius: 15,
-                            spreadRadius: 2,
-                          ),
-                        ],
-                      ),
-                      child: CircleAvatar(
-                        radius: 50,
-                        backgroundColor: GameColors.bg,
-                        child: Text(
-                          initial,
-                          style: TextStyle(
-                            color: neonGreen,
-                            fontSize: 44,
-                            fontWeight: FontWeight.w500,
-                            shadows: [
-                              Shadow(
-                                color: neonGreen.withValues(alpha: 0.8),
-                                blurRadius: 10,
-                              ),
-                            ],
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Center(
+                    child: CircleAvatar(
+                      radius: 34,
+                      backgroundColor: GameColors.bg,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(color: neonGreen, width: 2.5),
+                          boxShadow: [
+                            BoxShadow(
+                              color: neonGreen.withValues(alpha: 0.5),
+                              blurRadius: 15,
+                              spreadRadius: 2,
+                            ),
+                          ],
+                        ),
+                        child: CircleAvatar(
+                          radius: 34,
+                          backgroundColor: GameColors.bg,
+                          child: Text(
+                            initial,
+                            style: TextStyle(
+                              color: neonGreen,
+                              fontSize: 30,
+                              fontWeight: FontWeight.w500,
+                              shadows: [
+                                Shadow(
+                                  color: neonGreen.withValues(alpha: 0.8),
+                                  blurRadius: 10,
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 16),
-                Center(
-                  child: Row(
+                  const SizedBox(height: 6),
+                  Row(
                     mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Flexible(
                         child: Text(
@@ -136,26 +150,25 @@ class ProfileScreen extends ConsumerWidget {
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                             color: Colors.white,
-                            fontSize: 24,
+                            fontSize: 20,
                             fontWeight: FontWeight.w800,
                           ),
                         ),
                       ),
                       IconButton(
                         tooltip: 'Edit display name',
+                        visualDensity: VisualDensity.compact,
                         onPressed: () => _showEditNameDialog(context, ref, p),
                         icon: const Icon(
                           Icons.edit_outlined,
                           color: GameColors.neon,
+                          size: 18,
                         ),
                       ),
                     ],
                   ),
-                ),
-                if (p.email != null && p.email!.isNotEmpty)
-                  Center(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                  if (p.email != null && p.email!.isNotEmpty)
+                    Center(
                       child: Text(
                         p.email!,
                         maxLines: 1,
@@ -166,81 +179,57 @@ class ProfileScreen extends ConsumerWidget {
                         ),
                       ),
                     ),
-                  ),
-                const SizedBox(height: 8),
-                Center(
-                  child: Text(
-                    p.leagueTier,
-                    style: TextStyle(
-                      color: GameColors.neon.withValues(alpha: 0.85),
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13,
+                  const SizedBox(height: 4),
+                  Center(
+                    child: Text(
+                      p.leagueTier,
+                      style: TextStyle(
+                        color: GameColors.neon.withValues(alpha: 0.85),
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 24),
-                Card(
-                  color: GameColors.card,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    side: const BorderSide(color: GameColors.cardBorder),
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: Column(
+                      children: [
+                        for (var i = 0; i < stats.length; i++)
+                          Expanded(
+                            child: Padding(
+                              padding: EdgeInsets.only(
+                                bottom: i == stats.length - 1 ? 0 : 10,
+                              ),
+                              child: _statCell(
+                                stats[i].$1,
+                                stats[i].$2,
+                                stats[i].$3,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
-                  elevation: 0,
-                  child: Column(
-                    children: [
-                      _tile(
-                        Icons.sports_cricket_outlined,
-                        'Total Matches',
-                        '${p.matchesPlayed}',
-                      ),
-                      _tile(Icons.emoji_events_outlined, 'Wins', '${p.wins}'),
-                      _tile(Icons.close_rounded, 'Losses', '${p.losses}'),
-                      _tile(Icons.percent_outlined, 'Win rate', '$winRate%'),
-                      _tile(
-                        Icons.sports_baseball_outlined,
-                        'Runs scored (history)',
-                        _fmt.format(totalRuns),
-                      ),
-                      _tile(
-                        Icons.star_border_rounded,
-                        'Ranking Points',
-                        _fmt.format(p.rankingPoints),
-                      ),
-                      _tile(
-                        Icons.local_fire_department_outlined,
-                        'Daily streak',
-                        '${p.dailyStreak} days',
-                      ),
-                      _tile(
-                        Icons.monetization_on_outlined,
-                        'Coins',
-                        _fmt.format(p.coins),
-                        isLast: true,
-                      ),
-                    ],
+                  const SizedBox(height: 14),
+                  OutlinedButton(
+                    onPressed: () async {
+                      final confirmed = await _confirmSignOut(context);
+                      if (confirmed != true) return;
+                      await ref.read(authRepositoryProvider).signOut();
+                      if (context.mounted) context.go('/login');
+                    },
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFFE57373),
+                      side: const BorderSide(color: Color(0xFF4A2C2C)),
+                      padding: const EdgeInsets.symmetric(vertical: 11),
+                    ),
+                    child: const Text(
+                      'Log out',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 16),
-                const Center(child: MonetizationBanner()),
-                const SizedBox(height: 24),
-                OutlinedButton(
-                  onPressed: () async {
-                    final confirmed = await _confirmSignOut(context);
-                    if (confirmed != true) return;
-                    await ref.read(authRepositoryProvider).signOut();
-                    if (context.mounted) context.go('/login');
-                  },
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFFE57373),
-                    side: const BorderSide(color: Color(0xFF4A2C2C)),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                  ),
-                  child: const Text(
-                    'Log out',
-                    style: TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           );
         },
@@ -364,42 +353,52 @@ class ProfileScreen extends ConsumerWidget {
     controller.dispose();
   }
 
-  static Widget _tile(
-    IconData icon,
-    String title,
-    String value, {
-    bool isLast = false,
-  }) {
-    return Column(
-      children: [
-        ListTile(
-          leading: Icon(icon, color: Colors.white, size: 26),
-          title: Text(
-            title,
-            style: const TextStyle(
-              color: Colors.white70,
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
+  static Widget _statCell(IconData icon, String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: GameColors.card,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: GameColors.cardBorder),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: GameColors.neon.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: GameColors.neon, size: 20),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
-          trailing: Text(
+          const SizedBox(width: 10),
+          Text(
             value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 17,
-              fontWeight: FontWeight.bold,
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
             ),
           ),
-        ),
-        if (!isLast)
-          Divider(
-            height: 1,
-            thickness: 1,
-            color: GameColors.cardBorder.withValues(alpha: 0.5),
-            indent: 16,
-            endIndent: 16,
-          ),
-      ],
+        ],
+      ),
     );
   }
 }

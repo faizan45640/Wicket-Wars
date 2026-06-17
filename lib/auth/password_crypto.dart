@@ -4,11 +4,7 @@ import 'package:encrypt/encrypt.dart';
 ///
 /// **Course requirement:** demonstrate symmetric encrypt + decrypt in the app.
 ///
-/// **Reality check (read this for viva / reports):** Firebase Auth only accepts a
-/// **plaintext** password at the API. We encrypt in memory, then decrypt immediately
-/// so the SDK still receives the real password. Traffic to Google already uses **TLS**.
-/// A hardcoded key in source is **not** production security — use the **Keystore /
-/// Keychain** or **remote KMS** if you ever store ciphertext for real.
+/// 
 final class PasswordCrypto {
   PasswordCrypto._();
 

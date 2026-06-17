@@ -215,4 +215,5 @@ npx firebase-tools deploy --only firestore:rules
 - **Security?** Clients can't mutate match rooms directly — Cloud Functions are authoritative; Firestore rules restrict writes to owners.
 - **AI fallback?** Hugging Face REST first → Google AI → deterministic data.
 - **Background task scope?** Periodic (Android min 15 min), runs on its own isolate, communicates via SharedPreferences, and delivers the energy-full reminder as a backstop.
-- **Encryption realism?** Demo of symmetric encrypt/decrypt; real password still needed by Firebase, so we decrypt before the call.
+- **Encryption realism?** Demo of symmetric encrypt/decrypt; real password still needed by Firebase, so we decryp
+t before the call.
